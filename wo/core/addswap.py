@@ -1,10 +1,12 @@
 """WordOps Swap Creation"""
-from wo.core.variables import WOVariables
-from wo.core.shellexec import WOShellExec
-from wo.core.fileutils import WOFileUtils
-from wo.core.aptget import WOAptGet
-from wo.core.logging import Log
 import os
+
+import psutil
+
+from wo.core.aptget import WOAptGet
+from wo.core.fileutils import WOFileUtils
+from wo.core.logging import Log
+from wo.core.shellexec import WOShellExec
 
 
 class WOSwap():
@@ -16,8 +18,11 @@ class WOSwap():
 
     def add(self):
         """Swap addition with WordOps"""
-        if WOVariables.wo_ram < 512:
-            if WOVariables.wo_swap < 1000:
+        # Get System RAM and SWAP details
+        wo_ram = psutil.virtual_memory().total / (1024 * 1024)
+        wo_swap = psutil.swap_memory().total / (1024 * 1024)
+        if wo_ram < 512:
+            if wo_swap < 1000:
                 Log.info(self, "Adding SWAP file, please wait...")
 
                 # Install dphys-swapfile
@@ -33,10 +38,10 @@ class WOSwap():
                     WOFileUtils.searchreplace(self, "/etc/dphys-swapfile",
                                               "#CONF_SWAPFILE=/var/swap",
                                               "CONF_SWAPFILE=/wo-swapfile")
-                    WOFileUtils.searchreplace(self,  "/etc/dphys-swapfile",
+                    WOFileUtils.searchreplace(self, "/etc/dphys-swapfile",
                                               "#CONF_MAXSWAP=2048",
                                               "CONF_MAXSWAP=1024")
-                    WOFileUtils.searchreplace(self,  "/etc/dphys-swapfile",
+                    WOFileUtils.searchreplace(self, "/etc/dphys-swapfile",
                                               "#CONF_SWAPSIZE=",
                                               "CONF_SWAPSIZE=1024")
                 else:

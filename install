@@ -4,13 +4,14 @@
 # -------------------------------------------------------------------------
 # Website:       https://wordops.net
 # GitHub:        https://github.com/WordOps/WordOps
-# Copyright (c) 2019 - WordOps
+# Copyright (c) 2019-2020 - WordOps
 # This script is licensed under M.I.T
 # -------------------------------------------------------------------------
-# Version 3.9.5.1 - 2019-05-10
+# wget -qO wo wops.cc && sudo -E bash wo
 # -------------------------------------------------------------------------
-readonly wo_version_old="2.2.3"
-readonly wo_version_new="3.9.5.1"
+# Version 3.13.2 - 2020-10-27
+# -------------------------------------------------------------------------
+
 # CONTENTS
 # ---
 # 1. VARIABLES AND DECLARATIONS
@@ -22,24 +23,25 @@ readonly wo_version_new="3.9.5.1"
 # 1 - Set the CLI output colors
 ###
 
-TPUT_RESET=$(tput sgr0)
-TPUT_FAIL=$(tput setaf 1)
-TPUT_INFO=$(tput setaf 7)
-TPUT_ECHO=$(tput setaf 4)
+CSI='\033['
+TPUT_RESET="${CSI}0m"
+TPUT_FAIL="${CSI}1;31m"
+TPUT_ECHO="${CSI}1;36m"
+TPUT_OK="${CSI}1;32m"
 
 wo_lib_echo() {
 
-    echo "${TPUT_ECHO}${*}${TPUT_RESET}"
+    echo -e "${TPUT_ECHO}${*}${TPUT_RESET}"
 }
 
 wo_lib_echo_info() {
 
-    echo "${TPUT_INFO}${*}${TPUT_RESET}"
+    echo -e "$*"
 }
 
 wo_lib_echo_fail() {
 
-    echo "${TPUT_FAIL}${*}${TPUT_RESET}"
+    echo -e "${TPUT_FAIL}${*}${TPUT_RESET}"
 }
 
 ###
@@ -47,7 +49,7 @@ wo_lib_echo_fail() {
 ###
 
 wo_lib_error() {
-    echo "[ $(date) ] ${TPUT_FAIL}${*}${TPUT_RESET}"
+    echo -e "[ $(date) ] ${TPUT_FAIL}${*}${TPUT_RESET}"
     exit "$2"
 }
 
@@ -61,14 +63,21 @@ while [ "$#" -gt 0 ]; do
         wo_branch="$2"
         shift
         ;;
-    -p | --preserve)
-        wo_preserve_config="y"
-        ;;
     --force)
         wo_force_install="y"
         ;;
     --travis)
         wo_travis="y"
+        wo_force_install="y"
+        ;;
+    --mainline | --beta)
+        wo_branch="mainline"
+        ;;
+    -s | --silent)
+        wo_force_install="y"
+        ;;
+    --purge | --uninstall)
+        wo_purge="y"
         ;;
     *) # positional args
         ;;
@@ -81,133 +90,157 @@ done
 ###
 if [[ $EUID -ne 0 ]]; then
     wo_lib_echo_fail "Sudo privilege required..."
-    wo_lib_echo_fail "Use: curl -sL wops.cc | sudo bash"
+    wo_lib_echo_fail "Use: wget -qO wo wops.cc && sudo bash wo  "
     exit 100
 fi
 
-echo ""
-wo_lib_echo "Welcome to WordOps install script v${wo_version_new}"
-echo ""
+export DEBIAN_FRONTEND=noninteractive
+unset LANG
+export LANG='en_US.UTF-8'
+export LC_ALL='C.UTF-8'
 
 ###
-# 1- Update the apt sewers with fresh info
+# 1- Main functions
 ###
-[ -z "$wo_travis" ] && {
-    wo_lib_echo "Updating apt-get repository info"
-    apt-get update -qq
+
+# check if a command exist
+command_exists() {
+    command -v "$@" >/dev/null 2>&1
 }
 
-###
-# 1- Check whether lsb_release is installed, and if not, install it
-###
-if [ -z "$(command -v lsb_release)" ]; then
-    wo_lib_echo "Installing lsb-release, please wait..."
-    apt-get -y install lsb-release -qq
-fi
+# run functions and exit on failure
+_run() {
+    if [ -n "$2" ]; then
+        echo -ne "${TPUT_ECHO}${2}${TPUT_RESET}\t"
+    fi
+    if ! { "$1" >>"$wo_install_log" 2>&1; }; then
+        if [ -n "$2" ]; then
+            echo -e "${TPUT_FAIL}[KO]${TPUT_RESET}"
+        fi
+    else
+        if [ -n "$2" ]; then
+            echo -e "[${TPUT_OK}OK${TPUT_RESET}]"
+        fi
+    fi
 
-###
-# 1 - Define variables for later use
-###
-if [ -z "$wo_branch" ]; then
-    wo_branch=master
-fi
-readonly wo_log_dir=/var/log/wo/
-readonly wo_backup_dir=/var/lib/wo-backup/
-readonly wo_tmp_dir=/var/lib/wo/tmp
-readonly wo_install_log=/var/log/wo/install.log
-readonly wo_linux_distro=$(lsb_release -is)
-readonly wo_distro_version=$(lsb_release -sc)
-readonly wo_distro_id=$(lsb_release -rs)
-TIME_FORMAT='%d-%b-%Y-%H%M%S'
-TIME=$(date +"$TIME_FORMAT")
-NGINX_BACKUP_FILE="/var/lib/wo-backup/nginx-backup.$TIME.tar.gz"
-EE_BACKUP_FILE="/var/lib/wo-backup/ee-backup.$TIME.tar.gz"
-WO_BACKUP_FILE="/var/lib/wo-backup/wo-backup.$TIME.tar.gz"
-WO_ARCH="$(uname -m)"
+}
 
-if [ -x /usr/local/bin/ee ]; then
-    ee_migration=1
-elif [ -x /usr/local/bin/wo ]; then
-    wo_upgrade=1
-fi
+_curl() {
+    curl -m 10 --retry 3 -sL "$@"
+}
+
+wo_init_variables() {
+    if [ -z "$wo_branch" ]; then
+        if [ "$wo_travis" = "y" ]; then
+            wo_branch=updating-configuration
+        else
+            wo_branch=master
+        fi
+    fi
+    readonly wo_install_log=/var/log/wo/install.log
+    readonly TIME_FORMAT='%d-%b-%Y-%H%M%S'
+    readonly TIME=$(date +"$TIME_FORMAT")
+    readonly NGINX_BACKUP_FILE="/var/lib/wo-backup/nginx-backup.$TIME.tar.zst"
+    readonly EE_BACKUP_FILE="/var/lib/wo-backup/ee-backup.$TIME.tar.zst"
+    readonly WO_BACKUP_FILE="/var/lib/wo-backup/wo-backup.$TIME.tar.zst"
+
+    if [ -x /usr/local/bin/ee ]; then
+        ee_migration=1
+    elif [ -x /usr/local/bin/wo ]; then
+        wo_upgrade=1
+    fi
+}
 
 ###
 # 1 - Checking linux distro
 ###
-if [ -z "$wo_force_install" ]; then
-    if [ "$wo_linux_distro" != "Ubuntu" ] && [ "$wo_linux_distro" != "Debian" ] && [ "$wo_linux_distro" != "Raspbian" ]; then
-        wo_lib_echo_fail "WordOps (wo) only supports Ubuntu, Debian & Raspbian at the moment."
-        wo_lib_echo_fail "If you are feeling adventurous, you are free to fork WordOps to support"
-        wo_lib_echo_fail "other Linux distributions and perhaps even Unix deratives."
-        exit 100
-    else
-        check_wo_linux_distro=$(lsb_release -sc | grep -E "trusty|xenial|bionic|disco|jessie|stretch")
-        if [ -z "$check_wo_linux_distro" ]; then
-            wo_lib_echo_fail "WordOps (wo) only supports Ubuntu 14.04/16.04/18.04/19.04 LTS, Debian 8.x, Debian 9.x and Raspbian 9.x"
+
+wo_check_distro() {
+    local wo_linux_distro
+    wo_linux_distro=$(lsb_release -is)
+    local wo_distro_version
+    wo_distro_version=$(lsb_release -sc)
+    if [ -z "$wo_force_install" ]; then
+        if [ "$wo_linux_distro" != "Ubuntu" ] && [ "$wo_linux_distro" != "Debian" ] && [ "$wo_linux_distro" != "Raspbian" ]; then
+            wo_lib_echo_fail "WordOps (wo) only supports Ubuntu, Debian & Raspbian at the moment."
+            wo_lib_echo_fail "You can bypass this warning by adding the flag --force to the install command"
+            wo_lib_echo_fail "Feel free to open a pull-request if you want to add support for another Linux distributions"
             exit 100
+        else
+            check_wo_linux_distro=$(lsb_release -sc | grep -E "xenial|bionic|jessie|stretch|buster|focal")
+            if [ -z "$check_wo_linux_distro" ]; then
+                wo_lib_echo_fail "WordOps (wo) only supports Ubuntu 16.04/18.04/20.04 LTS, Debian 9.x/10.x and Raspbian 9.x/10x.\n
+                You can bypass this warning by adding the flag --force to the install command"
+                exit 100
+            fi
         fi
     fi
-fi
+
+}
 
 ###
 # 1 - To prevent errors or unexpected behaviour, create the log and ACL it
 ###
-if [ ! -d "$wo_log_dir" ] || [ ! -d "$wo_backup_dir" ] || [ ! -d "$wo_tmp_dir" ]; then
+wo_dir_init() {
+    local wo_log_dir=/var/log/wo
+    local wo_backup_dir=/var/lib/wo-backup
+    local wo_tmp_dir=/var/lib/wo/tmp
+    if [ ! -d "$wo_log_dir" ] || [ ! -d "$wo_backup_dir" ] || [ ! -d "$wo_tmp_dir" ]; then
 
-    wo_lib_echo "Creating WordOps backup, tmp & log directory, just a second..."
-    mkdir -p "$wo_backup_dir" "$wo_log_dir" "$wo_tmp_dir" || wo_lib_error "Whoops - seems we are unable to create the log directory $wo_log_dir, exit status " $?
+        mkdir -p "$wo_backup_dir" "$wo_log_dir" "$wo_tmp_dir"
 
-    # create wordops log files
-    touch /var/log/wo/{wordops.log,install.log}
+        # create wordops log files
+        touch /var/log/wo/{wordops.log,install.log}
 
-    chmod -R 700 "$wo_log_dir" "$wo_backup_dir" "$wo_tmp_dir" || wo_lib_error "Whoops, there was an error setting the permissions on the WordOps log folder, exit status " $?
-fi
+        chmod -R 750 "$wo_log_dir" "$wo_backup_dir" "$wo_tmp_dir"
+        chown -R root:adm "$wo_log_dir"
+    fi
+
+}
 
 ###
 # 2 - Setup the dependencies for installation
 ####
+
 wo_install_dep() {
+    local wo_linux_distro
+    wo_linux_distro=$(lsb_release -is)
+    if [ "$wo_linux_distro" == "Ubuntu" ]; then
+        # install dependencies
+        apt-get --option=Dpkg::options::=--force-confmiss --option=Dpkg::options::=--force-confold --assume-yes install \
+            build-essential curl gzip python3-pip python3-apt python3-venv gcc python3-dev sqlite3 git tar software-properties-common pigz \
+            gnupg2 cron ccze rsync apt-transport-https tree haveged ufw unattended-upgrades tzdata ntp zstd idn \
+            python3-distutils-extra libapt-pkg-dev >/dev/null 2>&1
+        curl -sL https://download.opensuse.org/repositories/home:/virtubox:/WordOps/xUbuntu_18.04/Release.key | apt-key add -
+    else
+        # install dependencies
+        apt-get --option=Dpkg::options::=--force-confmiss --option=Dpkg::options::=--force-confold --assume-yes install \
+            build-essential curl gzip dirmngr sudo python3-pip python3-apt python3-venv gcc python3-dev ca-certificates sqlite3 git tar \
+            software-properties-common pigz apt-transport-https gnupg2 cron ccze rsync tree haveged ufw unattended-upgrades tzdata ntp zstd idn \
+            python3-distutils-extra libapt-pkg-dev >/dev/null 2>&1
+        # add php repository gpg key
+        [ -d /etc/apt/trusted.gpg.d ] && { wget -qO /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg; }
+        # add nginx repository gpg key
+        curl -sL https://download.opensuse.org/repositories/home:virtubox:WordOps/Debian_10/Release.key | apt-key add -
+    fi
+    locale-gen en
+    # enable unattended upgades
+    if [ ! -f /etc/apt/apt.conf.d/20auto-upgrades ]; then
+        cp -f /usr/share/unattended-upgrades/20auto-upgrades /etc/apt/apt.conf.d/20auto-upgrades
+    fi
+    # upgrade pip
+    python3 -m pip install --upgrade pip
+}
 
-    {
-
-        [ -z "$wo_travis" ] && {
-            # update server packages
-            DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confmiss" -o Dpkg::Options::="--force-confold" -y dist-upgrade
-        } > /dev/null 2>&1
-        if [ "$wo_linux_distro" == "Ubuntu" ]; then
-            # add nginx repository gpg key
-            wget https://download.opensuse.org/repositories/home:virtubox:WordOps/xUbuntu_"$wo_distro_id"/Release.key -O Release.key
-            apt-key add - < Release.key
-            rm -f Release.key
-            # install dependencies
-            DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confmiss" -o Dpkg::Options::="--force-confold" -y install build-essential curl gzip python3 python3-apt python3-setuptools python3-dev sqlite3 git tar software-properties-common pigz gnupg2 cron ccze rsync tree haveged ufw > /dev/null 2>&1
-        else
-            # add nginx repository gpg ke
-            wget https://download.opensuse.org/repositories/home:virtubox:WordOps/Debian_9.0/Release.key -O Release.key
-            apt-key add - < Release.key
-            rm -f Release.key
-            [ -d /etc/apt/trusted.gpg.d ] && { wget -qO /etc/apt/trusted.gpg.d/php.gpg https://packages.sury.org/php/apt.gpg; }
-            # install dependencies
-            DEBIAN_FRONTEND=noninteractive apt-get -o Dpkg::Options::="--force-confmiss" -o Dpkg::Options::="--force-confold" -y install build-essential curl gzip dirmngr sudo python3 python3-apt python3-setuptools python3-dev ca-certificates sqlite3 git tar software-properties-common pigz apt-transport-https gnupg2 cron ccze rsync tree haveged ufw > /dev/null 2>&1
+wo_timesync() {
+    # set default ntp pools
+    if [ -f /etc/systemd/timesyncd.conf ]; then
+        if ! grep -q "time.cloudflare.com" /etc/systemd/timesyncd.conf; then
+            sed -e 's/^#NTP=/NTP=time.cloudflare.com 0.ubuntu.pool.ntp.org 1.ubuntu.pool.ntp.org 2.ubuntu.pool.ntp.org 3.ubuntu.pool.ntp.org/' -i /etc/systemd/timesyncd.conf
+            # enable ntp
+            timedatectl set-ntp 1
         fi
-
-        locale-gen en
-    } >> "$wo_install_log" 2>&1
-    # Support PFS
-    # if [ -f /etc/nginx/nginx.conf ]; then
-    #     # Replace previous ciphers
-    #     new_ciphers="EECDH+CHACHA20:EECDH+AESGCM:EECDH+AES"
-    #     sed -i "s/ssl_ciphers\ \(\"\|.\|'\)\(.*\)\(\"\|.\|'\);/ssl_ciphers \"$new_ciphers\";/" /etc/nginx/nginx.conf
-    #     # Change the TLS protocols
-    #     sed -i "s/ssl_protocols\ \(.*\);/ssl_protocols TLSv1.2;/" /etc/nginx/nginx.conf
-    # fi
-
-    # # Let's Encrypt .well-known folder setup
-    # if [ ! -d /var/www/html/.well-known/acme-challenge ]; then
-    #     mkdir -p /var/www/html/.well-known/acme-challenge
-    #     chown -R www-data:www-data /var/www/html /var/www/html/.well-known
-    #     chmod 750 /var/www/html /var/www/html/.well-known
-    # fi
+    fi
 }
 
 ###
@@ -218,22 +251,19 @@ wo_sync_db() {
     # Switching from EE -> WO
     ###
     if [ ! -f /var/lib/wo/dbase.db ]; then
-        # Create the WordOps folder
-        mkdir -p /var/lib/wo
 
         if [ -f /var/lib/ee/ee.db ]; then
-            # Copy the EasyEngine database
+
+            # Make a backup of the EasyEngine database
             cp /var/lib/ee/ee.db /var/lib/wo/dbase-ee.db
 
-            ###
-            # Clean WO installation
-            ###
-
+            # Copy ee database
             cp /var/lib/ee/ee.db /var/lib/wo/dbase.db
         else
+            if [ -d /etc/nginx/sites-available ] && [ -d /var/www ]; then
 
-            # Create an empty database for WordOps
-            echo "CREATE TABLE sites (
+                # Create an empty database for WordOps
+                echo "CREATE TABLE sites (
            id INTEGER PRIMARY KEY     AUTOINCREMENT,
            sitename UNIQUE,
            site_type CHAR,
@@ -252,76 +282,59 @@ wo_sync_db() {
            php_version VARCHAR
             );" | sqlite3 /var/lib/wo/dbase.db
 
-            # Check site is enable/live or disable
-            AV_SITES="$(basename -a /etc/nginx/sites-available/* | grep -v default)"
-            for site in $AV_SITES; do
-                if [ -h "/etc/nginx/sites-enabled/$site" ]; then
-                    wo_site_status='1'
-                else
-                    wo_site_status='0'
-                fi
-
-                # Acquire information about the current nginx configuration
-
-                wo_site_current_type=$(grep "common/" /etc/nginx/sites-available/$site | awk -F "/" '{print $2}')
-
-                if [ "$(echo $wo_site_current_type | grep php)" ]; then
-                    if [ "$(echo $wo_site_current_type | grep php7)" ]; then
-                        wo_php_version="7.0"
+                # Check site is enable/live or disable
+                AV_SITES="$(basename -a /etc/nginx/sites-available/* | grep -v default)"
+                for site in $AV_SITES; do
+                    if [ -h "/etc/nginx/sites-enabled/$site" ]; then
+                        wo_site_status='1'
                     else
-                        wo_php_version="5.6"
+                        wo_site_status='0'
                     fi
-                else
-                    wo_php_version=""
-                fi
 
-                if [ "$(echo $wo_site_current_type | grep redis)" ]; then
-                    wo_site_current_cache="wpredis"
-                elif [ -z "$(echo $wo_site_current_type | grep wpsc)" ]; then
-                    wo_site_current_cache="wpsc"
-                elif [ -z "$(echo $wo_site_current_type | grep wpfc)" ]; then
-                    wo_site_current_cache="wpfc"
-                else
-                    wo_site_current_cache="basic"
-                fi
+                    # Acquire information about the current nginx configuration
 
-                if [ "$(echo $wo_site_current_type | grep wp)" ]; then
-                    if [ -z "$(echo $wo_site_current_type | grep wpsubdir)" ]; then
-                        wo_site_current="wpsubdir"
-                    elif [ -z "$(echo $wo_site_current_type | grep wpsudomain)" ]; then
-                        wo_site_current="wpsubdomain"
+                    wo_site_current_type=$(grep "common/" "/etc/nginx/sites-available/$site" | awk -F "/" '{print $2}')
+
+                    if echo "$wo_site_current_type" | grep -q "redis"; then
+                        wo_site_current_cache="wpredis"
+                    elif echo "$wo_site_current_type" | grep -q wpsc; then
+                        wo_site_current_cache="wpsc"
+                    elif echo "$wo_site_current_type" | grep -q wpfc; then
+                        wo_site_current_cache="wpfc"
                     else
-                        wo_site_current="wp"
+                        wo_site_current_cache="basic"
                     fi
-                else
-                    if [ -z "$(echo $wo_site_current_type | grep location)" ]; then
-                        wo_site_current="proxy"
-                    elif [ -z "$(echo $wo_site_current_type | grep php)" ]; then
-                        wo_site_current="html"
-                    else
-                        if [ -f /var/www/${site}/ee-config.php ] || [ -f /var/www/${site}/wo-config.php ]; then
-                            wo_site_current="mysql"
+
+                    if echo "$wo_site_current_type" | grep -q wp; then
+                        if echo "$wo_site_current_type" | grep -q wpsubdir; then
+                            wo_site_current="wpsubdir"
+                        elif echo "$wo_site_current_type" | grep -q wpsudomain; then
+                            wo_site_current="wpsubdomain"
                         else
-                            wo_site_current="php"
+                            wo_site_current="wp"
+                        fi
+                    else
+                        if echo "$wo_site_current_type" | grep -q location; then
+                            wo_site_current="proxy"
+                        elif echo "$wo_site_current_type" | grep -q php; then
+                            wo_site_current="html"
+                        else
+                            if [ -f "/var/www/${site}/ee-config.php" ] || [ -f "/var/www/${site}/wo-config.php" ]; then
+                                wo_site_current="mysql"
+                            else
+                                wo_site_current="php"
+                            fi
                         fi
                     fi
-                fi
 
-            done
+                    wo_webroot="/var/www/$site"
 
-            wo_webroot="/var/www/$site"
-
-            # Import the configuration into the WordOps SQLite database
-            echo "INSERT INTO sites (sitename, site_type, cache_type, site_path, is_enabled, is_ssl, storage_fs, storage_db)
+                    # Import the configuration into the WordOps SQLite database
+                    echo "INSERT INTO sites (sitename, site_type, cache_type, site_path, is_enabled, is_ssl, storage_fs, storage_db)
             VALUES (\"$site\", \"$wo_site_current\", \"$wo_site_current_cache\", \"$wo_webroot\", \"$wo_site_status\", 0, 'ext4', 'mysql');" | sqlite3 /var/lib/wo/dbase.db
 
-            wo_lib_echo "Updating WordOps Database"
-            echo "ALTER TABLE sites ADD COLUMN db_name varchar;" | sqlite3 /var/lib/wo/dbase.db
-            echo "ALTER TABLE sites ADD COLUMN db_user varchar; " | sqlite3 /var/lib/wo/dbase.db
-            echo "ALTER TABLE sites ADD COLUMN db_password varchar;" | sqlite3 /var/lib/wo/dbase.db
-            echo "ALTER TABLE sites ADD COLUMN db_host varchar;" | sqlite3 /var/lib/wo/dbase.db
-            echo "ALTER TABLE sites ADD COLUMN is_hhvm INT DEFAULT '0';" | sqlite3 /var/lib/wo/dbase.db
-            echo "ALTER TABLE sites ADD COLUMN php_version varchar DEFAULT \"$wo_php_version\";" | sqlite3 /var/lib/wo/dbase.db
+                done
+            fi
         fi
 
         #        echo "UPDATE sites SET php_version = REPLACE(php_version, '5.6', '7.2');" | sqlite3 /var/lib/wo/dbase.db
@@ -341,307 +354,311 @@ secure_wo_db() {
 
 # Update the WP-CLI version
 wo_update_wp_cli() {
-    {
-        WP_CLI_PATH=$(command -v wp)
-        if [ -n "$WP_CLI_PATH" ]; then
-            rm -rf "$WP_CLI_PATH"
-            # Update WP-CLI to the most recent version
-            wget -qO /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-            chmod +x /usr/local/bin/wp
-        else
-            wget -qO /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
-            chmod +x /usr/local/bin/wp
-        fi
-        [ ! -h /usr/bin/wp ] && {
-            ln -s /usr/local/bin/wp /usr/bin/
-        }
-        [ ! -f /etc/bash_completion.d/wp-completion.bash ] && {
-            wget -qO /etc/bash_completion.d/wp-completion.bash https://raw.githubusercontent.com/wp-cli/wp-cli/master/utils/wp-completion.bash
-        }
-    } >> "$wo_install_log" 2>&1
+    WP_CLI_PATH=$(command -v wp)
+    if [ -n "$WP_CLI_PATH" ]; then
+        rm -rf "$WP_CLI_PATH"
+    fi
+    # Update WP-CLI to the most recent version
+    wget -qO /usr/local/bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+    chmod +x /usr/local/bin/wp
+    [ ! -h /usr/bin/wp ] && {
+        ln -s /usr/local/bin/wp /usr/bin/
+    }
+    [ -d /etc/bash_completion.d ] && {
+        wget -qO /etc/bash_completion.d/wp-completion.bash https://raw.githubusercontent.com/wp-cli/wp-cli/master/utils/wp-completion.bash
+    }
+
 }
 
 wo_install_acme_sh() {
     # check if acme.sh is already installed
     if [ ! -x /etc/letsencrypt/acme.sh ]; then
-        {
-            # clone the git repository
-            if [ -d /opt/acme.sh/.git ]; then
-                git -C /opt/acme.sh pull origin master
-            else
-                git clone https://github.com/Neilpang/acme.sh.git /opt/acme.sh -q
-            fi
-            cd /opt/acme.sh || exit 1
-            # create conf directories
-            mkdir -p /etc/letsencrypt/{config,live,renewal}
-            # install acme.sh
-            ./acme.sh --install \
-                --home /etc/letsencrypt \
-                --config-home /etc/letsencrypt/config \
-                --cert-home /etc/letsencrypt/renewal
-            # enable auto-upgrade
-            /etc/letsencrypt/acme.sh --config-home /etc/letsencrypt/config --upgrade --auto-upgrade
 
-        } >> "$wo_install_log" 2>&1
+        # clone the git repository
+        if [ -d /opt/acme.sh/.git ]; then
+            git -C /opt/acme.sh pull origin master
+        else
+            git clone --depth=50 https://github.com/Neilpang/acme.sh.git /opt/acme.sh -q
+        fi
+        cd /opt/acme.sh || exit 1
+        # create conf directories
+        mkdir -p /etc/letsencrypt/{config,live,renewal}
+        # install acme.sh
+        ./acme.sh --install \
+            --home /etc/letsencrypt \
+            --config-home /etc/letsencrypt/config \
+            --cert-home /etc/letsencrypt/renewal
     fi
-    if [ -x "$HOME/.acme.sh/acme.sh" ]; then
-        {
-            # backup acme.sh folder
-            /bin/tar -I pigz -cf /var/lib/wo-backup/acme.sh.tar.gz "$HOME/.acme.sh"
-            # rsync previous certificates to new acme.sh location
-            /usr/bin/rsync -rltgoDpz --exclude="account.conf" \
-                --exclude="acme.sh" \
-                --exclude="acme.sh.env" \
-                --exclude="deploy" \
-                --exclude="dnsapi" \
-                --exclude="http.header" \
-                --exclude="ca" \
-                "$HOME/.acme.sh/" \
-                /etc/letsencrypt/renewal/
-            # remove previous acme.sh folder
-            rm -rf "$HOME/.acme.sh"
-            # create acme.sh.env file inlcuded in .bashrc to avoid error when logging in
-            mkdir -p "$HOME/.acme.sh"
-            echo '' > "$HOME/.acme.sh/acme.sh.env"
 
-        } >> "$wo_install_log" 2>&1
+    if [ -x "$HOME/.acme.sh/acme.sh" ]; then
+        # backup acme.sh folder
+        /bin/tar -I zstd -cf /var/lib/wo-backup/acme.sh.tar.zst "$HOME/.acme.sh"
+        # rsync previous certificates to new acme.sh location
+        /usr/bin/rsync -rltgoDpz --exclude="account.conf" \
+            --exclude="acme.sh" \
+            --exclude="acme.sh.env" \
+            --exclude="deploy" \
+            --exclude="dnsapi" \
+            --exclude="http.header" \
+            --exclude="ca" \
+            "$HOME/.acme.sh/" \
+            /etc/letsencrypt/renewal/
+        # remove previous acme.sh folder
+        rm -rf "$HOME/.acme.sh"
+        mkdir "$HOME/.acme.sh"
+        touch "$HOME/.acme.sh/acme.sh.env"
+        # removing previous cronjob
     fi
     # Let's Encrypt .well-known folder setup
     if [ ! -d /var/www/html/.well-known/acme-challenge ]; then
         mkdir -p /var/www/html/.well-known/acme-challenge
-        chown -R www-data:www-data /var/www/html /var/www/html/.well-known
-        chmod 750 /var/www/html /var/www/html/.well-known
+    fi
+    chown -R www-data:www-data /var/www/html /var/www/html/.well-known
+    chmod 750 /var/www/html /var/www/html/.well-known
+    if [ -x /etc/letsencrypt/acme.sh ]; then
+        export LE_WORKING_DIR="/etc/letsencrypt"
+        export LE_CONFIG_HOME="/etc/letsencrypt/config"
+        /etc/letsencrypt/acme.sh --config-home '/etc/letsencrypt/config' --upgrade --auto-upgrade
+        /etc/letsencrypt/acme.sh --config-home '/etc/letsencrypt/config' --uninstall-cronjob
+        /etc/letsencrypt/acme.sh --config-home '/etc/letsencrypt/config' --install-cronjob
+    fi
+
+}
+
+# WordOps install
+wo_install() {
+    local python_ver
+    python_ver=$(python3 -c "import sys; print(sys.version_info[1])")
+    local wo_distro_codename
+    wo_distro_codename=$(lsb_release -sc)
+    local wo_linux_distro
+    wo_linux_distro=$(lsb_release -is)
+    if [ -d /usr/local/lib/python3."$python_ver"/dist-packages ]; then
+        cd /usr/local/lib/python3."$python_ver"/dist-packages || exit 1
+    fi
+    python3 -m pip uninstall -yq wo wordops ee
+    cd || exit 1
+    if [ -d /opt/wo/lib/python3."$python_ver"/site-packages/apt ]; then
+        source /opt/wo/bin/activate
+        python3 -m pip install -U pip setuptools wheel
     else
-        chmod 750 /var/www/html /var/www/html/.well-known
+        rm -rf /opt/wo
+        python3 -m venv /opt/wo
+        source /opt/wo/bin/activate
+        python3 -m pip install -U pip setuptools wheel
+        if [ "$wo_linux_distro" = "Debian" ] || [ "$wo_linux_distro" = "Raspbian" ]; then
+            if [ "$wo_distro_codename" = "stretch" ]; then
+                python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.4.y#egg=python-apt
+            else
+                python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.8.4.y#egg=python-apt
+            fi
+        else
+            if [ "$wo_distro_codename" = "focal" ]; then
+                python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@2.0.0#egg=python-apt
+            elif [ "$wo_distro_codename" = "bionic" ]; then
+                python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.6.y#egg=python-apt
+            else
+                python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.1.y-xenial#egg=python-apt
+            fi
+        fi
+    fi
+
+    if [ "$wo_branch" = "master" ]; then
+        python3 -m pip install -U wordops
+    else
+        python3 -m pip install -I "git+git://github.com/WordOps/WordOps.git@$wo_branch#egg=wordops"
+    fi
+    local python_venv
+    python_venv=$(python3 -c "import sys; print(sys.version_info[1])")
+    cp -rf /opt/wo/lib/python3."$python_venv"/site-packages/usr/* /usr/
+    cp -rn /opt/wo/lib/python3."$python_venv"/site-packages/etc/* /etc/
+    cp -f /opt/wo/lib/python3."$python_venv"/site-packages/etc/bash_completion.d/wo_auto.rc /etc/bash_completion.d/wo_auto.rc
+    rm -rf /usr/local/bin/wo /usr/local/lib/python3."$python_venv"/dist-packages/{etc,usr}
+    ln -s /opt/wo/bin/wo /usr/local/bin/
+    deactivate
+    if [ ! -d /opt/wo/lib/python3."$python_ver"/site-packages/apt ];then
+        python3 -m venv --system-site-packages /opt/wo
     fi
 }
 
 # Clone Github repository if it doesn't exist
-wo_install() {
-    {
-        if [ ! -d /tmp/WordOps/.git ]; then
-            rm -rf /tmp/WordOps
-            git clone https://github.com/WordOps/WordOps.git /tmp/WordOps -b "$wo_branch"
+wo_travis_install() {
+    local python_ver
+    python_ver=$(python3 -c "import sys; print(sys.version_info[1])")
+    local wo_distro_codename
+    wo_distro_codename=$(lsb_release -sc)
+    local wo_linux_distro
+    wo_linux_distro=$(lsb_release -is)
+    if [ -d ./dist ]; then
+        rm -rf dist
+    fi
+    if [ -f ./setup.py ]; then
+        if [ -d /opt/wo/lib/python3."$python_ver"/site-packages/apt ]; then
+            source /opt/wo/bin/activate
+            python3 -m pip install -U pip setuptools wheel
         else
-            git -C /tmp/WordOps pull origin "$wo_branch"
+            rm -rf /opt/wo
+            python3 -m venv /opt/wo
+            source /opt/wo/bin/activate
+            python3 -m pip install -U pip setuptools wheel
+            if [ "$wo_linux_distro" = "Debian" ] || [ "$wo_linux_distro" = "Raspbian" ]; then
+                if [ "$wo_distro_codename" = "stretch" ]; then
+                    python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.4.y#egg=python-apt
+                else
+                    python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.8.4.y#egg=python-apt
+                fi
+            else
+                if [ "$wo_distro_codename" = "focal" ]; then
+                    python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@2.0.0#egg=python-apt
+                elif [ "$wo_distro_codename" = "bionic" ]; then
+                    python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.6.y#egg=python-apt
+                else
+                    python3 -m pip install git+https://salsa.debian.org/apt-team/python-apt.git@1.1.y-xenial#egg=python-apt
+                fi
+            fi
         fi
-        cd /tmp/WordOps || exit 1
-    } >> "$wo_install_log" 2>&1
-    python3 setup.py install
+        python3 -m pip install -U .
+    else
+        python3 -m pip install -U "git+git://github.com/WordOps/WordOps.git@$wo_branch#egg=wordops"
+    fi
+    cp -rf /opt/wo/lib/python3."$python_ver"/site-packages/usr/* /usr/
+    cp -rn /opt/wo/lib/python3."$python_ver"/site-packages/etc/* /etc/
+    cp -f /opt/wo/lib/python3."$python_ver"/site-packages/etc/bash_completion.d/wo_auto.rc /etc/bash_completion.d/wo_auto.rc
+    rm -f /usr/local/bin/wo
+    ln -s /opt/wo/bin/wo /usr/local/bin/
+    deactivate
 }
 
 wo_upgrade_nginx() {
+    local wo_linux_distro
+    wo_linux_distro=$(lsb_release -is)
+    local wo_distro_version
+    wo_distro_version=$(lsb_release -sc)
 
-    {
+    if [ -d /var/lib/wo-backup/nginx ]; then
+        /bin/tar -I zstd "$NGINX_BACKUP_FILE" /var/lib/wo-backup/nginx
+        rm -rf /var/lib/wo-backup/nginx
+    fi
+    # backup nginx conf
+    if [ -d /etc/nginx ]; then
+        /usr/bin/rsync -a --noatime /etc/nginx/ /var/lib/wo-backup/nginx/
+    fi
+    if [ -d /etc/php ]; then
+        /usr/bin/rsync -a --noatime /etc/php/ /var/lib/wo-backup/php/
+    fi
+    # chec if the package nginx-ee is installed
+    CHECK_NGINX_EE=$(dpkg --list | grep nginx-ee)
+    CHECK_PHP72=$(command -v php-fpm7.2)
 
-        if [ -d /var/lib/wo-backup/nginx ]; then
-            tar -I pigz "$NGINX_BACKUP_FILE" /var/lib/wo-backup/nginx
-            rm -rf /var/lib/wo-backup/nginx
-        fi
-        # backup nginx conf
-        if [ -d /etc/nginx ]; then
-            /usr/bin/rsync -az /etc/nginx/ /var/lib/wo-backup/nginx/
-        fi
-        if [ -d /etc/php ]; then
-            /usr/bin/rsync -az /etc/php/ /var/lib/wo-backup/php/
-        fi
-        # chec if the package nginx-ee is installed
-        CHECK_NGINX_EE=$(dpkg --list | grep nginx-ee)
-        CHECK_NGINX_WO=$(dpkg --list | grep nginx-wo)
-        CHECK_PHP72=$(command -v php-fpm7.2)
-        CHECK_PHP73=$(command -v php-fpm7.3)
-
-        # add new Nginx repository
-        if [ "$wo_linux_distro" = "Ubuntu" ]; then
-            wget -qO /tmp/nginx-wo.key "https://download.opensuse.org/repositories/home:virtubox:WordOps/xUbuntu_${wo_distro_id}/Release.key"
-        else
-            if [ "$wo_distro_version" == "jessie" ]; then
-                wget -qO /tmp/nginx-wo.key https://download.opensuse.org/repositories/home:virtubox:WordOps/Debian_8.0/Release.key
-            else
-                wget -qO /tmp/nginx-wo.key https://download.opensuse.org/repositories/home:virtubox:WordOps/Debian_9.0/Release.key
-            fi
-        fi
+    # add new Nginx repository
+    if [ "$wo_distro_version" == "jessie" ]; then
         # import the respository key for updates
-        apt-key add - < /tmp/nginx-wo.key
-        rm -f /tmp/nginx-wo.key
-        sudo apt-get update
+        curl -sL https://download.opensuse.org/repositories/home:virtubox:WordOps/Debian_8.0/Release.key | apt-key add -
+    else
+        curl -sL https://download.opensuse.org/repositories/home:virtubox:WordOps/Debian_9.0/Release.key | apt-key add -
+    fi
 
-        if [ -f /etc/nginx/common/release ]; then
-            CHECK_NGINX_UPSTREAM_VERSION=$(grep "$wo_version_new" /etc/nginx/common/release)
-        else
-            CHECK_NGINX_UPSTREAM_VERSION=$(grep "$wo_version_new" /etc/nginx/conf.d/fastcgi.conf)
-        fi
-        if [ -z "$CHECK_NGINX_UPSTREAM_VERSION" ]; then
-
-            # stop nginx
-            service nginx stop
-
-            # prevent apt preference to block install
-            [ -f /etc/apt/preferences.d/nginx-block ] && {
-                mv /etc/apt/preferences.d/nginx-block "$HOME/nginx-block"
-            }
-
-            # install new nginx package
+    # install new nginx package
+    if {
+        if [ -n "$CHECK_NGINX_EE" ]; then
             if [ -x /usr/local/bin/wo ]; then
-
-                if [ -n "$CHECK_NGINX_EE" ]; then
-                    # remove previous package
-                    apt-mark unhold nginx-ee nginx-common nginx-custom
-                    apt-get -y -qq autoremove nginx-ee nginx-common nginx-custom --purge
-                elif [ -n "$CHECK_NGINX_WO" ]; then
-                    apt-mark unhold nginx-wo nginx-common nginx-custom
-                    apt-get -y -qq autoremove nginx-wo nginx-common nginx-custom --purge
-
+                [ -f /etc/apt/preferences.d/nginx-block ] && { mv /etc/apt/preferences.d/nginx-block /var/lib/wo/tmp/nginx-block; }
+                # stop nginx
+                service nginx stop
+                # remove previous package
+                apt-mark unhold nginx-ee nginx-common nginx-custom
+                apt-get autoremove nginx-ee nginx-common nginx-custom --allow-change-held-packages --purge -qq
+                # remove previous php-fpm pool configuration
+                if [ -n "$CHECK_PHP72" ]; then
+                    apt-get purge php7.2-fpm -y -qq
+                    rm -f /etc/php/7.2/fpm/pool.d/{www.conf,www-two.conf,debug.conf}
                 fi
                 if [ -d /etc/nginx ]; then
                     rm -rf /etc/nginx
                 fi
-                # remove previous php-fpm pool configuration
-                if [ -n "$CHECK_PHP72" ]; then
-                    apt-get remove php7.2-fpm -y -qq --purge
-                    rm -f /etc/php/7.2/fpm/pool.d/{www.conf,www-two.conf,debug.conf}
-                fi
-                if [ -n "$CHECK_PHP73" ]; then
-                    WO_STACK_INSTALL_ARGS="--php73"
-                    apt-get remove php7.3-fpm -y -qq --purge
-                    rm -f /etc/php/7.3/fpm/pool.d/{www.conf,www-two.conf,debug.conf}
-                else
-                    WO WO_STACK_INSTALL_ARGS=""
-                fi
-                /usr/local/bin/wo stack install --nginx --php $WO_STACK_INSTALL_ARGS
-                echo "$wo_version_new" > /etc/nginx/common/release
-                rm -f /etc/nginx/common/acl.conf /etc/nginx/conf.d/{map-wp-cache.conf,map-wp.conf}
+                /usr/local/bin/wo stack install --nginx --php
+                rm -f /etc/nginx/common/acl.conf /etc/nginx/htpasswd-wo
+                /usr/bin/rsync -au --noatime /var/lib/wo-backup/nginx/ /etc/nginx/
+                /usr/local/bin/wo stack upgrade --nginx --force
             fi
-
-            # restore sites and configuration
-            /usr/bin/rsync -auz /var/lib/wo-backup/nginx/ /etc/nginx/
-
-            # update redis.conf headers
-            if [ -f /etc/nginx/common/redis.conf ]; then
-                sed -i "s/X-Cache /X-SRCache-Fetch-Status /g" /etc/nginx/common/redis.conf
-                sed -i "s/X-Cache-2 /X-SRCache-Store-Status /g" /etc/nginx/common/redis.conf
-
-            fi
-
-            VERIFY_NGINX_CONFIG=$(nginx -t 2>&1 | grep failed)
-            # check if nginx -t do not return errors
-            if [ -z "$VERIFY_NGINX_CONFIG" ]; then
-                systemctl stop nginx
-                systemctl start nginx
-            else
-                VERIFY_NGINX_BUCKET=$(nginx -t 2>&1 | grep "server_names_hash_bucket_size")
-                if [ -n "$VERIFY_NGINX_BUCKET" ]; then
-                    sed -i "s/# server_names_hash_bucket_size 64;/server_names_hash_bucket_size 64;/g" /etc/nginx/nginx.conf
-                fi
-                systemctl stop nginx
-                systemctl start nginx
-            fi
-
-            # set back apt preference
-            [ -f "$HOME/nginx-block" ] && {
-                mv "$HOME/nginx-block" /etc/apt/preferences.d/nginx-block
-            }
         fi
-    } >> "$wo_install_log" 2>&1
+    }; then
+        # restore sites and configuration
+        [ -f /etc/nginx/htpasswd-ee ] && { cp -f /etc/nginx/htpasswd-ee /etc/nginx/htpasswd-wo; }
+        sed -i "s/locations.conf/locations-wo.conf/" /etc/nginx/sites-available/*
+        sed -i "s/locations-php7.conf/locations-wo.conf/" /etc/nginx/sites-available/*
+        sed -i "s/locations-php71.conf/locations-wo.conf/" /etc/nginx/sites-available/*
+        sed -i "s/locations-php72.conf/locations-wo.conf/" /etc/nginx/sites-available/*
+        sed -i "s/locations-php73.conf/locations-wo.conf/" /etc/nginx/sites-available/*
+        sed -i "s/htpasswd-ee/htpasswd-wo/" /etc/nginx/common/acl.conf
+        sed -i 's/ssl on;/#ssl on;/' /var/www/*/conf/nginx/ssl.conf
+    fi
 
+    # update redis.conf headers
+    if [ -f /etc/nginx/common/redis.conf ]; then
+        sed -i "s/X-Cache /X-SRCache-Fetch-Status /g" /etc/nginx/common/redis.conf
+        sed -i "s/X-Cache-2 /X-SRCache-Store-Status /g" /etc/nginx/common/redis.conf
+
+    fi
+
+    VERIFY_NGINX_CONFIG=$(nginx -t 2>&1 | grep failed)
+    # check if nginx -t do not return errors
+    if [ -z "$VERIFY_NGINX_CONFIG" ]; then
+        systemctl stop nginx
+        systemctl start nginx
+    else
+        VERIFY_NGINX_BUCKET=$(nginx -t 2>&1 | grep "server_names_hash_bucket_size")
+        if [ -n "$VERIFY_NGINX_BUCKET" ]; then
+            sed -i "s/# server_names_hash_bucket_size 64;/server_names_hash_bucket_size 128;/g" /etc/nginx/nginx.conf
+        fi
+        systemctl stop nginx
+        systemctl start nginx
+    fi
+    [ -f /var/lib/wo/tmp/nginx-block ] && { mv /var/lib/wo/tmp/nginx-block /etc/apt/preferences.d/nginx-block; }
+    return 0
 }
 
 wo_update_latest() {
 
-    if [ -f /etc/nginx/fastcgi_params ]; then
-        CHECK_HTTP_PROXY=$(grep 'HTTP_PROXY' /etc/nginx/fastcgi_params)
-        if [ -z "$CHECK_HTTP_PROXY" ]; then
-            echo 'fastcgi_param  HTTP_PROXY         "";' >> /etc/nginx/fastcgi_params
-            echo 'fastcgi_param  HTTP_PROXY         "";' >> /etc/nginx/fastcgi.conf
-            service nginx restart | tee -ai $wo_install_log
-        fi
-    fi
-
-    if [ -f /etc/ImageMagick/policy.xml ]; then
-        if [ ! -f /etc/ImageMagick/patch.txt ]; then
-            echo -e "\t<policy domain=\"coder\" rights=\"none\" pattern=\"EPHEMERAL\" />\n\t<policy domain=\"coder\" rights=\"none\" pattern=\"URL\" />\n\t<policy domain=\"coder\" rights=\"none\" pattern=\"HTTPS\" />\n\t<policy domain=\"coder\" rights=\"none\" pattern=\"MVG\" />\n\t<policy domain=\"coder\" rights=\"none\" pattern=\"MSL\" />" >> /etc/ImageMagick/patch.txt
-            sed -i '/<policymap>/r /etc/ImageMagick/patch.txt' /etc/ImageMagick/policy.xml
-        fi
-    fi
-
     # Move ~/.my.cnf to /etc/mysql/conf.d/my.cnf
-    if [ ! -f /etc/mysql/conf.d/my.cnf ]; then
-        # create conf.d folder if not exist
-        [ ! -d /etc/mysql/conf.d ] && {
-            mkdir -p /etc/mysql/conf.d
-            chmod 755 /etc/mysql/conf.d
-        }
-        if [ -f $HOME/.my.cnf ]; then
-            cp -f $HOME/.my.cnf /etc/mysql/conf.d/my.cnf
-            chmod 600 /etc/mysql/conf.d/my.cnf
-
-        elif [ -f /root/.my.cnf ]; then
-            cp -f /root/.my.cnf /etc/mysql/conf.d/my.cnf
-            chmod 600 /etc/mysql/conf.d/my.cnf
-        fi
-    else
-        if [ ! -f /root/.my.cnf ]; then
-            cp /etc/mysql/conf.d/my.cnf /root/.my.cnf
-            chmod 600 /root/.my.cnf
+    if [ -d /etc/mysql ]; then
+        if [ ! -f /etc/mysql/conf.d/my.cnf ]; then
+            # create conf.d folder if not exist
+            [ ! -d /etc/mysql/conf.d ] && {
+                mkdir -p /etc/mysql/conf.d
+                chmod 755 /etc/mysql/conf.d
+            }
+            if [ -f /root/.my.cnf ]; then
+                cp -f /root/.my.cnf /etc/mysql/conf.d/my.cnf
+                chmod 600 /etc/mysql/conf.d/my.cnf
+            elif [ -f "$HOME/.my.cnf" ]; then
+                cp -f "$HOME/.my.cnf" /etc/mysql/conf.d/my.cnf
+                chmod 600 /etc/mysql/conf.d/my.cnf
+            fi
         fi
     fi
-
-    # Fix Redis-server security issue
-    # http://redis.io/topics/security
-    if [ -f /etc/redis/redis.conf ]; then
-        CHECK_REDIS_BIND=$(grep -0 -v "#" /etc/redis/redis.conf | grep 'bind' >> /dev/null 2>&1)
-
-        if [ -z "$CHECK_REDIS_BIND" ]; then
-            echo 'bind 127.0.0.1 ::1' >> /etc/redis/redis.conf
-
-            service redis-server restart > /dev/null 2>&1
-
-        fi
-    fi
-
-}
-
-# Do git intialisation
-wo_git_init() {
-    # Nginx under git version control
-    [ -d /etc/nginx ] && {
-        cd /etc/nginx || exit 1
-        [ ! -d /etc/nginx/.git ] && {
-            git init
-        }
-        git add -A .
-        git commit -am "Updated Nginx"
-    } >> /var/log/wo/install.log 2>&1
-    # WordOps under git version control
-    [ -d /etc/wo ] && {
-        cd /etc/wo || exit 1
-        [ ! -d /etc/wo/.git ] && {
-            git init
-        }
-        git add -A .
-        git commit -am "Installed/Updated to WordOps"
-    } >> /var/log/wo/install.log 2>&1
-    # PHP under git version control
-    [ -d /etc/php ] && {
-        cd /etc/php || exit 1
-        [ ! -d /etc/php/.git ] && {
-            git init
-        }
-        git add -A .
-        git commit -am "Updated PHP"
-    } >> /var/log/wo/install.log 2>&1
 }
 
 wo_backup_ee() {
-    /bin/tar -I pigz -cf "$EE_BACKUP_FILE" /etc/nginx /usr/local/bin/ee /usr/lib/ee/templates /usr/local/lib/python3.6/dist-packages/ee-*.egg /etc/ee /var/lib/ee /etc/letsencrypt >> /var/log/wo/install.log 2>&1
+    local BACKUP_EE=""
+    [ -d /etc/nginx ] && { BACKUP_EE="$BACKUP_EE /etc/nginx"; }
+    [ -d /etc/letsencrypt ] && { BACKUP_EE="$BACKUP_EE /etc/letsencrypt"; }
+    /bin/tar -I zstd -cf "$EE_BACKUP_FILE" /usr/local/bin/ee /usr/lib/ee/templates /etc/ee /var/lib/ee "$BACKUP_EE"
+    return 0
 }
 
 wo_backup_wo() {
-    /bin/tar -I pigz -cf "$WO_BACKUP_FILE" /etc/nginx /usr/local/lib/python3.6/dist-packages/wo-*.egg /etc/wo /var/lib/wo /etc/letsencrypt >> /var/log/wo/install.log 2>&1
+    if [ -d /etc/nginx ] && [ -d /etc/wo ] && [ -d /var/lib/wo ]; then
+        /bin/tar -I zstd -cf "$WO_BACKUP_FILE" /etc/nginx /etc/wo /var/lib/wo
+    fi
+    return 0
 }
 
 wo_clean_ee() {
-    rm -f /usr/local/bin/ee /etc/bash_completion.d/ee_auto.rc /usr/lib/ee/templates /usr/local/lib/python3.6/dist-packages/ee-*.egg /etc/ee /var/lib/ee >> /var/log/wo/install.log 2>&1
+    local python_ver
+    python_ver=$(python3 -c "import sys; print(sys.version_info[1])")
+    rm -rf /usr/local/bin/ee /etc/bash_completion.d/ee_auto.rc /usr/lib/ee/templates /usr/local/lib/python3."$python_ver"/dist-packages/ee-*.egg /etc/ee /var/lib/ee
+    return 0
 }
 
 wo_remove_ee_cron() {
@@ -650,139 +667,229 @@ wo_remove_ee_cron() {
 
 }
 
-wo_tweak_kernel() {
+wo_domain_suffix() {
+    _curl https://raw.githubusercontent.com/publicsuffix/list/master/public_suffix_list.dat | sed '/^\/\//d' | sed '/^$/d' | sed 's/^\s+//g' >/var/lib/wo/public_suffix_list.dat
+}
 
-    if [ ! -f /etc/sysctl.d/60-wo-tweaks.conf ]; then
-        if [ "$WO_ARCH" = "x86_64" ]; then
-            rm -f /etc/sysctl.d/60-ubuntu-nginx-web-server.conf
-            wget -qO /etc/sysctl.d/60-wo-tweaks.conf https://raw.githubusercontent.com/WordOps/WordOps/updating-configuration/wo/cli/templates/sysctl.mustache
-            if [ "$wo_distro_version" = "bionic" ] || [ "$wo_distro_version" = "disco" ]; then
-                modprobe tcp_bbr && echo 'tcp_bbr' >> /etc/modules-load.d/bbr.conf
-                echo -e '\nnet.ipv4.tcp_congestion_control = bbr\nnet.ipv4.tcp_notsent_lowat = 16384' >> /etc/sysctl.d/60-wo-tweaks.conf
+wo_clean() {
+    local python_ver
+    python_ver=$(python3 -c "import sys; print(sys.version_info[1])")
+    rm -rf /usr/local/lib/python3."$python_ver"/dist-packages/{wo-*.egg,cement-*.egg,wordops-*.egg}
+}
+
+wo_uninstall() {
+    local python_ver
+    python_ver=$(python3 -c "import sys; print(sys.version_info[1])")
+    if { python3 -m pip list | grep -q "wordops" >/dev/null 2>&1; }; then
+        python3 -m pip uninstall wordops -y
+    fi
+    rm -rf /usr/local/lib/python3."$python_ver"/dist-packages/{pystache-*,cement-2.*,wo-*,wordops-*} /usr/local/bin/wo /etc/bash_completion.d/wo_auto.rc /var/lib/wo /etc/wo /usr/lib/wo/templates /opt/wo
+}
+
+wo_clean_repo() {
+    # remove old EasyEngine Nginx repository
+    if [ -f /etc/apt/sources.list.d/ee-repo.list ]; then
+        cp -f /etc/apt/sources.list.d/ee-repo.list /etc/apt/sources.list.d/ee-repo.list.save
+        grep -v "/home:/rtCamp:/EasyEngine" /etc/apt/sources.list.d/ee-repo.list.save >/etc/apt/sources.list.d/ee-repo.list
+    fi
+    if [ -f /etc/apt/sources.list.d/wo-repo.list ]; then
+        local wo_linux_distro
+        wo_linux_distro=$(lsb_release -is)
+        cp -f /etc/apt/sources.list.d/wo-repo.list /etc/apt/sources.list.d/wo-repo.list.save
+        if [ "$wo_linux_distro" = "Ubuntu" ]; then
+            grep -v "opensuse" /etc/apt/sources.list.d/wo-repo.list.save >/etc/apt/sources.list.d/wo-repo.list
+        else
+            grep -v "/home:/rtCamp:/EasyEngine" /etc/apt/sources.list.d/wo-repo.list.save >/etc/apt/sources.list.d/wo-repo.list
+        fi
+    fi
+}
+
+wo_woconf() {
+    if [ -f /etc/wo/wo.conf ]; then
+        if grep -q "log.logging" /etc/wo/wo.conf; then
+            sed -i "s/log.logging/log.colorlog/g" /etc/wo/wo.conf
+        fi
+        if ! grep -q "letsencrypt" /etc/wo/wo.conf; then
+            echo -e '\n[letsencrypt]\n\nkeylength = "ec-384"' >>/etc/wo/wo.conf
+        fi
+        if ! grep -q "php" /etc/wo/wo.conf; then
+            echo -e '\n[php]\n\nversion = 7.3' >>/etc/wo/wo.conf
+        fi
+    fi
+}
+
+wo_fix_kernel() {
+    if [ -f /opt/wo-kernel.sh ]; then
+        chmod +x /opt/wo-kernel.sh
+    fi
+}
+
+wo_init() {
+
+    ###
+    # 1- Update the apt sewers with fresh info
+    ###
+
+    if [ -z "$wo_travis" ]; then
+        # import easyengine opensusebuildservice gpg key to avoid issues with packages update
+        apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 3050ac3cd2ae6f03 >/dev/null 2>&1
+        apt-key adv --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys 0xF1656F24C74CD1D8 >/dev/null 2>&1
+        # fix digitalocean mariadb repository issue
+        sed -i 's/sfo1.mirrors.digitalocean.com\/mariadb/mariadb.mirrors.ovh.net\/MariaDB/' /etc/apt/sources.list.d/*.list >/dev/null 2>&1
+        if [ -f /etc/apt/preferences.d/MariaDB.pref ]; then
+            sed -i 's/sfo1.mirrors.digitalocean.com/mariadb.mirrors.ovh.net/' /etc/apt/preferences.d/MariaDB.pref >/dev/null 2>&1
+        fi
+        if ! {
+            apt-get update --allow-releaseinfo-change -qq >/dev/null 2>&1
+        }; then
+            apt-get update -qq >/dev/null 2>&1
+        fi
+        if ! command_exists curl; then
+            apt-get -y install curl -qq >/dev/null 2>&1
+        fi
+        if ! command_exists lsb_release; then
+            apt-get install lsb-release -qq >/dev/null 2>&1
+        fi
+        if ! command_exists jq; then
+            apt-get install jq -qq >/dev/null 2>&1
+        fi
+    fi
+    if [ "$wo_force_install" = "y" ]; then
+        [ ! -f "$HOME/.gitconfig" ] && { bash -c 'echo -e "[user]\n\tname = $USER\n\temail = root@$HOSTNAME.local" > $HOME/.gitconfig'; }
+    fi
+    if [ -f ./setup.py ]; then
+        readonly wo_version_new=$(grep "version='" setup.py | awk -F "'" '{print $2}' 2>&1)
+    else
+        readonly wo_version_new=$(curl -m 5 --retry 3 -sL https://api.github.com/repos/WordOps/WordOps/releases/latest 2>&1 | jq -r '.tag_name')
+    fi
+
+    echo ""
+    wo_lib_echo "Welcome to WordOps install/update script ${wo_version_new}"
+    echo ""
+
+}
+
+wo_php_fix() {
+    local php_versions="5.6 7.0 7.1 7.2 7.3 7.4"
+
+    apt-get autoremove --assume-yes --purge php8.0-* php-igbinary php-memcached php-msgpack php-redis php-imagick php-xdebug php-memcache
+    for php_version in $php_versions; do
+        if [ -f "/usr/bin/php$php_version" ]; then
+            if [ -f "/usr/sbin/php-fpm$php_version" ]; then
+                local php_extensions="igbinary memcached msgpack redis imagick xdebug"
+                for php_ext in $php_extensions; do
+                    apt-get -option=Dpkg::options::=--force-confmiss --option=Dpkg::options::=--force-confold --assume-yes install "php$php_version-$php_ext"
+                done
             else
-                modprobe tcp_htcp && echo 'tcp_htcp' >> /etc/modules-load.d/htcp.conf
-                echo 'net.ipv4.tcp_congestion_control = htcp' >> /etc/sysctl.d/60-wo-tweaks.conf
+                apt-get autoremove --assume-yes --purge "php$php_version-*"
             fi
 
         fi
-        LIMIT_CHECK=$(grep "500000" /etc/security/limits.conf)
-        if [ -z "$LIMIT_CHECK" ]; then
-            echo -e "*         hard    nofile      500000\n*         soft    nofile      500000\nroot      hard    nofile      500000\nroot      soft    nofile      500000\n" >> /etc/security/limits.conf
-        fi
+    done
+    if [ -f /lib/systemd/system/mariadb.service ]; then
+        systemctl daemon-reload
+        systemctl enable mariadb
     fi
-
 }
 
 ###
 # 4 - WO MAIN SETUP
 ###
 
-# 1 - WO already installed
-if [ -x /usr/local/bin/wo ]; then
-    if ! {
-        wo -v 2>&1 | grep $wo_version_new
-    }; then
-        echo -e "Update WordOps to $wo_version_new (y/n): " && read -r WO_ANSWER
-        if [ "$WO_ANSWER" = "y" ] || [ "$WO_ANSWER" = "Y" ]; then
-            wo_lib_echo "Installing wo dependencies " | tee -ai $wo_install_log
-            wo_install_dep | tee -ai $wo_install_log
-            wo_lib_echo "Backing-up WO install" | tee -ai $wo_install_log
-            wo_backup_wo | tee -ai $wo_install_log
-            wo_lib_echo "Syncing WO database" | tee -ai $wo_install_log
-            secure_wo_db | tee -ai $wo_install_log
-            wo_lib_echo "Installing WordOps " | tee -ai $wo_install_log
-            if [ -f "$HOME/.gitconfig" ]; then
-                wo_install >> wo_install_log 2>&1
-            else
-                wo_install | tee -ai $wo_install_log
-            fi
-            if [ -n "$(command -v nginx)" ]; then
-                wo_lib_echo "Upgrading Nginx" | tee -ai $wo_install_log
-                wo_upgrade_nginx | tee -ai $wo_install_log
-            fi
-            wo_update_latest | tee -ai $wo_install_log
-            wo_lib_echo "Updating acme.sh" | tee -ai $wo_install_log
-            wo_install_acme_sh | tee -ai $wo_install_log
-            wo_lib_echo "Applying Kernel tweaks" | tee -ai $wo_install_log
-            wo_tweak_kernel | tee -ai $wo_install_log
-            wo_lib_echo "Running post-install steps " | tee -ai $wo_install_log
-            wo_git_init | tee -ai $wo_install_log
-            wo_update_wp_cli | tee -ai $wo_install_log
-        else
-            wo_lib_error "Not updating WordOps to $wo_version_new, exit status = " 1
-        fi
-    else
-        wo_lib_error "You already have WordOps $wo_version_new, exit status = " 1
-    fi
+# create required directories
+wo_dir_init
+# install lsb_release, curl and display header
+wo_init
+# define main variables
+wo_init_variables
+# remove old repositories
+_run wo_clean_repo
+
+if [ -z "$wo_force_install" ]; then
+    # check distribution support
+    wo_check_distro
+fi
+
+# wo uninstall script
+if [ "$wo_purge" = "y" ]; then
+    _run wo_backup_wo "Backing-up WO install"
+    _run wo_uninstall "Uninstalling WordOps"
+    wo_lib_echo "The WordOps backup files can be found in $WO_BACKUP_FILE"
+    exit 0
 else
-    # 2 - Migration from EEv3
+    # 1 - WO already installed
+    if [ -x /usr/local/bin/wo ]; then
+        _run wo_clean
+        _run wo_woconf
+        _run wo_fix_kernel
+        _run wo_php_fix
+        # 2 - Migration from EEv3
+    else
+        if [ -x /usr/local/bin/ee ]; then
+            if [ -z "$wo_force_install" ]; then
+                echo -e "Migrate from EasyEngine to WordOps (y/n): " && read -r WO_ANSWER
+                if [ "$WO_ANSWER" != "y" ] && [ "$WO_ANSWER" != "Y" ]; then
+                    wo_lib_error "Not installing WordOps" 1
+                fi
+            fi
+            _run wo_backup_ee "Backing-up EE install"
+            _run wo_remove_ee_cron "Removing EasyEngine cronjob"
+        fi
+
+    fi
+    _run wo_install_dep "Installing wo dependencies"
+    _run wo_timesync
+    # skip steps if travis
+    if [ -z "$wo_travis" ]; then
+        #_run wo_download "Downloading WordOps"
+        _run wo_sync_db
+        _run wo_install "Installing WordOps"
+    else
+        _run wo_travis_install "Installing WordOps"
+    fi
     if [ -x /usr/local/bin/ee ]; then
-        echo -e "Migrate from EasyEngine to WordOps (y/n): " && read -r WO_ANSWER
-        if [ "$WO_ANSWER" = "y" ] || [ "$WO_ANSWER" = "Y" ]; then
-            wo_lib_echo "Installing wo dependencies " | tee -ai $wo_install_log
-            wo_install_dep | tee -ai $wo_install_log
-            wo_lib_echo "Backing-up EE install" | tee -ai $wo_install_log
-            wo_backup_ee | tee -ai $wo_install_log
-            wo_lib_echo "Removing EasyEngine cronjob" | tee -ai $wo_install_log
-            wo_remove_ee_cron | tee -ai $wo_install_log
-            wo_lib_echo "Syncing WO database" | tee -ai $wo_install_log
-            wo_sync_db | tee -ai $wo_install_log
-            secure_wo_db | tee -ai $wo_install_log
-            wo_lib_echo "Installing WordOps " | tee -ai $wo_install_log
-            if [ -f "$HOME/.gitconfig" ]; then
-                wo_install >> wo_install_log 2>&1
-            else
-                wo_install | tee -ai $wo_install_log
-            fi
-            if [ -n "$(command -v nginx)" ]; then
-                wo_lib_echo "Upgrading Nginx" | tee -ai $wo_install_log
-                wo_upgrade_nginx | tee -ai $wo_install_log
-            fi
-            wo_update_latest | tee -ai $wo_install_log
-            wo_lib_echo "Installing acme.sh" | tee -ai $wo_install_log
-            wo_install_acme_sh | tee -ai $wo_install_log
-            wo_lib_echo "Applying Kernel tweaks" | tee -ai $wo_install_log
-            wo_tweak_kernel | tee -ai $wo_install_log
-            wo_lib_echo "Running post-install steps " | tee -ai $wo_install_log
-            wo_git_init | tee -ai $wo_install_log
-            wo_update_wp_cli | tee -ai $wo_install_log
-            wo_lib_echo "Cleaning-up EE previous install" | tee -ai $wo_install_log
-            wo_clean_ee | tee -ai $wo_install_log
-        else
-            wo_lib_error "Not installing WordOps, exit status = " 1
-        fi
-    else
-        # 3 - Fresh WO setup
-        wo_lib_echo "Installing wo dependencies " | tee -ai $wo_install_log
-        wo_install_dep | tee -ai $wo_install_log
-        wo_lib_echo "Installing WordOps " | tee -ai $wo_install_log
-        wo_install | tee -ai $wo_install_log
-        wo_lib_echo "Applying Kernel tweaks" | tee -ai $wo_install_log
-        wo_tweak_kernel | tee -ai $wo_install_log
-        wo_lib_echo "Installing acme.sh" | tee -ai $wo_install_log
-        wo_install_acme_sh | tee -ai $wo_install_log
-        wo_lib_echo "Running post-install steps " | tee -ai $wo_install_log
-        secure_wo_db | tee -ai $wo_install_log
-        wo_git_init | tee -ai $wo_install_log
-        wo_update_wp_cli | tee -ai $wo_install_log
+        _run wo_upgrade_nginx "Upgrading Nginx"
+        _run wo_clean_ee "Cleaning previous EasyEngine install"
     fi
-fi
+    _run wo_install_acme_sh "Running post-install steps"
+    _run wo_domain_suffix
+    _run wo_update_wp_cli
+    _run wo_update_latest
+    _run secure_wo_db
 
-wo sync | tee -ai $wo_install_log
+    wo sync
 
-if [ "$ee_migration" = "1" ]; then
+    if [ "$ee_migration" = "1" ]; then
+        echo
+        wo_lib_echo "The migration from EasyEngine to WordOps was succesfull!"
+        wo_lib_echo "The EasyEngine backup files can be found in /var/lib/wo-backup/ee-backup.tgz"
+        echo
+    elif [ "$wo_upgrade" = "1" ]; then
+        wo_lib_echo "WordOps (wo) upgrade to $wo_version_new was succesfull!"
+        wo_lib_echo "Changelog is available on https://github.com/WordOps/WordOps/releases/tag/$wo_version_new"
+        echo
+        wo_lib_echo "To upgrade WordOps web stacks, you can use the command:"
+        wo_lib_echo_info "wo stack upgrade"
+        echo
+        wo_lib_echo "To update all other packages, you can use the command:"
+        wo_lib_echo_info "wo maintenance"
+    else
+        wo_lib_echo "WordOps (wo) installed successfully"
+        echo
+        wo_lib_echo "To enable bash-completion, just use the command:"
+        wo_lib_echo_info "bash -l"
+        echo
+        wo_lib_echo "To install WordOps recommended stacks, you can use the command:"
+        wo_lib_echo_info "wo stack install"
+        echo
+        wo_lib_echo "To create a first WordPress site, you can use the command:"
+        wo_lib_echo_info "wo site create site.tld --wp"
+    fi
     echo
-    wo_lib_echo "The migration from EasyEngine to WordOps was succesfull!"
-    wo_lib_echo "The EasyEngine backup files can be found in /var/lib/wo-backup/ee-backup.tgz"
+    wo_lib_echo "WordOps Documentation : https://docs.wordops.net"
+    wo_lib_echo "WordOps Community Forum : https://community.wordops.net"
+    wo_lib_echo "WordOps Community Chat : https://chat.wordops.net"
     echo
-elif [ "$wo_upgrade" = "1" ]; then
-    wo_lib_echo "WordOps (wo) upgrade to $wo_version_new was succesfull!"
-else
-    wo_lib_echo "WordOps (wo) installed successfully"
+    wo_lib_echo "Give WordOps a GitHub star : https://github.com/WordOps/WordOps/"
+    echo
 fi
-wo_lib_echo_info "For autocompletion, run the following command:"
-wo_lib_echo_info "source /etc/bash_completion.d/wo_auto.rc"
-echo
-wo_lib_echo "WordOps Documentation : https://docs.wordops.net"
-wo_lib_echo "WordOps Community Forum : https://community.wordops.net"
-echo

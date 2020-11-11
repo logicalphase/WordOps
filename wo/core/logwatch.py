@@ -3,10 +3,11 @@
 Real time log files watcher supporting log rotation.
 """
 
-import os
-import time
 import errno
+import os
 import stat
+import time
+
 from wo.core.logging import Log
 
 
@@ -49,9 +50,9 @@ class LogWatcher(object):
         # assert (os.path.isdir(self.folder), "%s does not exists"
         #                                     % self.folder)
         for file in self.filelist:
-            assert (os.path.isfile(file))
-        assert callable(callback)
-        self.update_files()
+            if not os.path.isfile(file):
+                if not callable(callback):
+                    self.update_files()
         # The first time we run the script we move all file markers at EOF.
         # In case of files created afterwards we don't do this.
         for id, file in list(iter(self.files_map.items())):
@@ -64,7 +65,7 @@ class LogWatcher(object):
     def __del__(self):
         self.close()
 
-    def loop(self, interval=0.1, async=False):
+    def loop(self, interval=0.1, req_async=False):
         """Start the loop.
         If async is True make one loop then return.
         """
@@ -72,7 +73,7 @@ class LogWatcher(object):
             self.update_files()
             for fid, file in list(iter(self.files_map.items())):
                 self.readfile(file)
-            if async:
+            if req_async:
                 return
             time.sleep(interval)
 

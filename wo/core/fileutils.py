@@ -1,11 +1,10 @@
 """WordOps file utils core classes."""
-import shutil
-import os
-import sys
-import glob
-import shutil
-import pwd
 import fileinput
+import os
+import pwd
+import shutil
+import codecs
+
 from wo.core.logging import Log
 
 
@@ -45,7 +44,7 @@ class WOFileUtils():
                 Log.debug(self, "Creating Symbolic link, Source:{0}, Dest:{1}"
                           .format(src, dst))
                 os.symlink(src, dst)
-            except Exception as e:
+            except OSError as e:
                 Log.debug(self, "{0}{1}".format(e.errno, e.strerror))
                 Log.error(self, "Unable to create symbolic link ...\n ")
         else:
@@ -83,7 +82,7 @@ class WOFileUtils():
         except IOError as e:
             Log.debug(self, "{0}".format(e.strerror))
             Log.error(self, "Unable to copy files from {0} to {1}"
-                      .format(src, dest))
+                      .format(src, dest), exit=False)
 
     def copyfile(self, src, dest):
         """
@@ -102,7 +101,7 @@ class WOFileUtils():
         except IOError as e:
             Log.debug(self, "{0}".format(e.strerror))
             Log.error(self, "Unable to copy file from {0} to {1}"
-                      .format(src, dest))
+                      .format(src, dest), exit=False)
 
     def searchreplace(self, fnm, sstr, rstr):
         """
@@ -112,7 +111,7 @@ class WOFileUtils():
             rstr: replace string
         """
         try:
-            Log.debug(self, "Doning search and replace, File:{0},"
+            Log.debug(self, "Doing search and replace, File:{0},"
                       "Source string:{1}, Dest String:{2}"
                       .format(fnm, sstr, rstr))
             for line in fileinput.input(fnm, inplace=True):
@@ -121,7 +120,7 @@ class WOFileUtils():
         except Exception as e:
             Log.debug(self, "{0}".format(e))
             Log.error(self, "Unable to search {0} and replace {1} {2}"
-                      .format(fnm, sstr, rstr))
+                      .format(fnm, sstr, rstr), exit=False)
 
     def mvfile(self, src, dst):
         """
@@ -204,6 +203,37 @@ class WOFileUtils():
             Log.debug(self, "{0}".format(e.strerror))
             Log.error(self, "Unable to change owner : {0}".format(path))
 
+    def wpperm(self, path, harden=False):
+        """
+            Fix WordPress site permissions
+            path : WordPress site path
+            harden : set 750/640 instead of 755/644
+        """
+        userid = pwd.getpwnam('www-data')[2]
+        groupid = pwd.getpwnam('www-data')[3]
+        try:
+            Log.debug(self, "Fixing WordPress permissions of {0}"
+                      .format(path))
+            if harden:
+                dperm = '0o750'
+                fperm = '0o640'
+            else:
+                dperm = '0o755'
+                fperm = '0o644'
+
+            for root, dirs, files in os.walk(path):
+                for d in dirs:
+                    os.chown(os.path.join(root, d), userid,
+                             groupid)
+                    os.chmod(os.path.join(root, d), dperm)
+                for f in files:
+                    os.chown(os.path.join(root, d), userid,
+                             groupid)
+                    os.chmod(os.path.join(root, f), fperm)
+        except OSError as e:
+            Log.debug(self, "{0}".format(e.strerror))
+            Log.error(self, "Unable to change owner : {0}".format(path))
+
     def mkdir(self, path):
         """
             create directories.
@@ -223,10 +253,7 @@ class WOFileUtils():
             Check if file exist on given path
         """
         try:
-            if os.path.exists(path):
-                return (True)
-            else:
-                return (False)
+            return bool(os.path.exists(path))
         except OSError as e:
             Log.debug(self, "{0}".format(e.strerror))
             Log.error(self, "Unable to check path {0}".format(path))
@@ -247,6 +274,24 @@ class WOFileUtils():
             Log.error(self, "Unable to Search string {0} in {1}"
                       .format(sstr, fnm))
 
+    def grepcheck(self, fnm, sstr):
+        """
+            Searches for string in file and returns True or False.
+        """
+        if os.path.isfile('{0}'.format(fnm)):
+            try:
+                Log.debug(self, "Finding string {0} to file {1}"
+                          .format(sstr, fnm))
+                for line in open(fnm, encoding='utf-8'):
+                    if sstr in line:
+                        return True
+                return False
+            except OSError as e:
+                Log.debug(self, "{0}".format(e.strerror))
+                Log.error(self, "Unable to Search string {0} in {1}"
+                          .format(sstr, fnm))
+        return False
+
     def rm(self, path):
         """
             Remove files
@@ -266,3 +311,78 @@ class WOFileUtils():
                 Log.debug(self, "{0}".format(e))
                 Log.error(self, "Unable to remove file  : {0} "
                           .format(path))
+
+    def findBrokenSymlink(self, sympath):
+        """
+            Find symlinks
+        """
+        links = []
+        broken = []
+
+        for root, dirs, files in os.walk(sympath):
+            if root.startswith('./.git'):
+                # Ignore the .git directory.
+                continue
+            for filename in files:
+                path = os.path.join(root, filename)
+                if os.path.islink(path):
+                    target_path = os.readlink(path)
+                    # Resolve relative symlinks
+                    if not os.path.isabs(target_path):
+                        target_path = os.path.join(os.path.dirname(path),
+                                                   target_path)
+                    if not os.path.exists(target_path):
+                        links.append(path)
+                        broken.append(path)
+                        os.remove(path)
+                    else:
+                        links.append(path)
+                else:
+                    # If it's not a symlink we're not interested.
+                    continue
+        return True
+
+    def textwrite(self, path, content):
+        """
+            Write content into a file
+        """
+        Log.debug(self, "Writing content in {0}".format(path))
+        try:
+            with open("{0}".format(path),
+                      encoding='utf-8', mode='w') as final_file:
+                final_file.write('{0}'.format(content))
+        except IOError as e:
+            Log.debug(self, "{0}".format(e))
+            Log.error(self, "Unable to write content in {0}".format(path))
+
+    def textappend(self, path, content):
+        """
+            Append content to a file
+        """
+        Log.debug(self, "Writing content in {0}".format(path))
+        try:
+            with open("{0}".format(path),
+                      encoding='utf-8', mode='a') as final_file:
+                final_file.write('{0}'.format(content))
+        except IOError as e:
+            Log.debug(self, "{0}".format(e))
+            Log.error(self, "Unable to append  content in {0}".format(path))
+
+    def enabledisable(self, path, enable=True):
+        """Switch conf from .conf.disabled to .conf or vice-versa"""
+        if enable:
+            Log.debug(self, "Check if disabled file exist")
+            if os.path.exists('{0}.disabled'.format(path)):
+                Log.debug(self, "Moving .disabled file")
+                shutil.move('{0}.disabled'.format(path), path)
+                return True
+            else:
+                return False
+        else:
+            Log.debug(self, "Check if .conf file exist")
+            if os.path.exists(path):
+                Log.debug(self, "Moving .conf file")
+                shutil.move(path, '{0}.disabled'.format(path))
+                return True
+            else:
+                return False

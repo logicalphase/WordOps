@@ -6,19 +6,19 @@
 <h2 align="center">An essential toolset that eases WordPress site and server administration</h2>
 
 <p align="center">
-<img src="https://img.virtubox.net/images/2019/03/27/wordops-stable-4.mp4.gif" width="600" alt="WordOps" />
-
+<img src="https://docs.wordops.net/images/wordops-intro.gif" width="800" alt="WordOps" />
 </p>
 
 <p align="center">
 <a href="https://travis-ci.org/WordOps/WordOps" target="_blank"><img src="https://travis-ci.org/WordOps/WordOps.svg?branch=master" alt="build"></a>
-<img src="https://img.shields.io/github/license/wordops/wordops.svg" alt="MIT">
-<img src="https://img.shields.io/github/last-commit/wordops/wordops.svg" alt="Commits">
+<a href="https://github.com/WordOps/WordOps/actions" target="_blank"><img src="https://github.com/WordOps/WordOps/workflows/CI/badge.svg?branch=master" alt="CI"></a>
+<img src="https://img.shields.io/github/license/wordops/wordops.svg?cacheSeconds=86400" alt="MIT">
+<img src="https://img.shields.io/github/last-commit/wordops/wordops.svg?cacheSeconds=86400" alt="Commits">
 <img alt="GitHub release" src="https://img.shields.io/github/release/WordOps/WordOps.svg">
-<br><a href="https://www.codacy.com/app/VirtuBox/WordOps?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=WordOps/WordOps&amp;utm_campaign=Badge_Grade"><img src="https://api.codacy.com/project/badge/Grade/fe9100fd2c634de7882ecec17f00a11a"/></a>
-<a href="https://twitter.com/WordOps_" target="_blank"><img src="https://img.shields.io/badge/twitter-%40WordOps__-blue.svg?style=flat&logo=twitter" alt="Badge Twitter" /></a>
-<a href="https://community.wordops.net/slack" target="_blank"><img src="https://img.shields.io/badge/slack-WordOps-4A154B.svg?style=flat&logo=slack" alt="Badge Slack" /></a>
-
+<br><a href="https://pypi.org/project/wordops/" target="_blank"><img alt="PyPI - Downloads" src="https://img.shields.io/pypi/dw/wordops.svg?cacheSeconds=86400"></a>
+<a href="https://www.codacy.com/app/VirtuBox/WordOps?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=WordOps/WordOps&amp;utm_campaign=Badge_Grade"><img src="https://api.codacy.com/project/badge/Grade/fe9100fd2c634de7882ecec17f00a11a" alt="codacy"/></a>
+<a href="https://twitter.com/WordOps_" target="_blank"><img src="https://img.shields.io/badge/twitter-%40WordOps__-blue.svg?style=flat&logo=twitter&cacheSeconds=86400" alt="Badge Twitter" /></a>
+<a href="https://chat.wordops.net" target="_blank"><img src="https://img.shields.io/badge/Rocket.Chat-WordOps-DB2323.svg?style=flat&cacheSeconds=86400&logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsIAAA7CARUoSoAAAAVOSURBVFhH7ZZbaJRHFIDP/P/uupsYkzQkrWIS3Wh0E280fciDUiyC2hdrQxUUBLFqaauoVFFoevGh6IOCWIQqfSiFVqIPrVSlIrYStPqQKhJz0e5v3GwuBk2q3WQv/2V6ztnZWxIrtXlq+8Hyzznz75wzcy7zw38eoZ7MTwCu4oqK8nyfb6pp2040Hg+d6e7u/xTAUa9MOOxA6/TpL7g9noMawCoQopRnFGg5JKVssh3n89qurvtKPWGgTYDacHgIDUdGGyfwhQpdiA88ut7WWVX1vlT/mSjSIaCF71ZVnUbFaqUaF3zvW/zdxlOpBClLhBDon4jiCfVrmmZYjnMzGou1vNLXN6L+8pfk5MBNv78sT4gOVBYr1XOBDo6ggxcdIb6cGwyexfVsNTWGHAcIPAXMOfgoKT0d4XKB8HpB6DpI0wQnFsOEGZur6EinLeXuwL17P5CY1GYY40DbjBmvunX9ZyWm0fLyIG/JEvAtXgzeRYvAXVEBwuPBFXAJNCyjUYjfuQOxlhYYuXwZYjdugLQs/i9alejJ195E4p2KcDjKSsUYB9pnzmxwadppJYJeXAzFW7fClLVrQSsoUNpnY4bD8Pvx4/CkqSntCDrRHPd6X5/X1hZJKkY50FFdPVOz7RZUcg7kL1sGZQcOgF5UxPPPQ7y9HR7s2AGJYJBlDMl3sw3jTbTB4UiXFEpCs6xjKeNT1qyBqceO/SPjxKRAAKbjKdCTwIp54+6sWetZQNIOdPj9dTi5gsaTamuhdP9+nJ2YktcKC+El3AwlLeM4ez9WttMWNCHeUkMo2bWLszwNJln0+nU+zmys3l5OOEkVoJCJBIw0N4PZ1aU0Sdzl5VC4bh2PcaO1DZWV1TTOhEDKl+lJ2e6rr2ddikeHD0PP+vXQvWoVDF+6xDozFILQ8uXQu2kT9G3ZQguwfmDPHujduBFCK1dC/PZt1qXIX7pUjdAhTaujZ8YBITj2wudLllcW0atXkwM6iWvXeEiLO1h6ROzWLe4FBO2eIJlKMhu9pESNADxudyE9MyGQsoeeTiQCzvAw61IUbd7MJeiaNo2Tk8ijfrBgAce1cMOGtNPF27bxJjyzZ8NkPIVs6NRSJEzzgRomwSTci11Q0u/xyZMYkVwc05TSxp6WjeNIJ5FQQgZ+F+dG07d9O69/x++32svLp5HdTAhs+yTGkc9x8MgRsIeGWJ+Ck3J0VWAXFG63EjLwu9Qhs6Akjpw/z2PMluZAd3cvjdMrBu7f78LL4wSNrYEBTizn8WOe+6dQ9fRjaNRdYaMDH/IEkrMlx+Xai5OtNKZe/vDgQdY/L3iq8OTUKejBvLEHB1mHLnw21zCusIDkOBDo7PwDP8XeUyJY/f1q9PegvhA5exbCq1fDwL59XC24MYkZdPSbYPAT9RqTGyiko6pqhQ7AwSrAun/x0CHWE8MXLkDk4kXwLlzItyF1uNR1bD98CAnD4NKjeFM1pcD8i+AHwe6AYXxBYlKbZIwDnX7/CeyKb9O4DEMwpaGBVuCjHGhsxAg+9dtiDGgphv9tSgA0zjOMTA1mkeMAXsXzXUL8ihnsomu4EtsstdvBo0chcu4cO/Is8I0o7vgmPs84lvVVTSjUp6bGJe1A+5w5BbplXUHFfJL10lLQsMnQvZ42LCUV/c64prVPknKGJWURdlAXfhSOCCkfYf50QH7+b9n3/bNgB1praiZ74vHvUXiNteOALrTiZ8WWmmDwF6WaEDDfAN7F3eqmiV1FUFehHq2hMyb2sgdo+Ef8NVYbxs6yoaFx4zihoDHRU1eXF6qv96GYDtH//EsB+BOmU3nrC4LJegAAAABJRU5ErkJggg==" alt="Badge Rocket.chat" /></a>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@
 <p align="center">
 <a href="https://wordops.net" target="_blank"> WordOps.net</a> •
 <a href="https://docs.wordops.net" target="_blank">Documentation</a> •
-<a href="https://community.wordops.net" target="_blank">Community forum</a> •
+<a href="https://community.wordops.net" target="_blank">Community Forum</a> •
 <a href="https://demo.wordops.eu" target="_blank">Dashboard demo</a>
 </p>
 
@@ -42,30 +42,33 @@
 
 - **Easy to install** : One step automated installer with migration from EasyEngine v3 support
 - **Fast deployment** : Fast and automated WordPress, Nginx, PHP, MySQL & Redis installation
-- **Up-to-date** : Nginx 1.16.0 with Brotli support, PHP 7.2 & 7.3, MariaDB 10.3 & Redis 5.0
+- **Custom Nginx build** : Nginx 1.18.0 - TLS v1.3 Cloudflare HTTP/2 HPACK & Brotli support
+- **Up-to-date** : PHP 7.2, 7.3 & 7.4, MariaDB 10.5 & Redis 6.0
 - **Secured** : Hardened WordPress security with strict Nginx location directives
 - **Powerful** : Optimized Nginx configurations with multiple cache backends support
-- **SSL** : Let's Encrypt SSL certificates handled by acme.sh
-- **Modern** : Secured SSL/TLS encryption with strong ciphers_suite, modern TLS protocols and HSTS support
+- **SSL** : Domain, Subdomain & Wildcard Let's Encrypt SSL certificates with DNS API support
+- **Modern** : Strong ciphers_suite, modern TLS protocols and HSTS support (Grade A+ on [ssllabs](https://www.ssllabs.com/ssltest/analyze.html?d=demo.wordops.eu&latest))
 - **Monitoring** : Live Nginx vhost traffic with ngx_vts_module and server monitoring with Netdata
+- **User Friendly** : WordOps dashboard with server status/monitoring and tools ([demo](https://demo.wordops.eu))
+
+---
 
 ## Requirements
 
 ### Operating System
 
-- Ubuntu 16.04 LTS (Xenial)
+#### Recommended
+
+- Ubuntu 20.04 LTS (Focal)
 - Ubuntu 18.04 LTS (Bionic)
-- Ubuntu 19.04 (Disco)
-- Debian 8 (Jessie)
+
+#### Also compatible
+
+- Ubuntu 16.04 LTS (Xenial)
 - Debian 9 (Stretch)
+- Debian 10 (Buster)
 - Raspbian 9 (Stretch)
-
-### Ports requirements
-
-- SSH (22 or custom)
-- HTTP & HTTPS (80 & 443)
-- WO Admin (22222)
-- GPG key Server (11371 outbound)
+- Raspbian 10 (Buster)
 
 ## Getting Started
 
@@ -74,33 +77,21 @@ wget -qO wo wops.cc && sudo bash wo      # Install WordOps
 sudo wo site create example.com --wp     # Install required packages & setup WordPress on example.com
 ```
 
-## Must read
-
-WordOps made some fundamental changes:
-
-- We've deprecated the mail stack. As an alternative, you can take a look at [Mail-in-a-Box](https://github.com/mail-in-a-box/mailinabox), [iRedMail](https://www.iredmail.org/) or [Caesonia](https://github.com/vedetta-com/caesonia). As Roundcube alternative, there is [Rainloop](https://www.rainloop.net/) or [Afterlogic WebMail](https://github.com/afterlogic/webmail-lite-8)
-- Support for w3tc is dropped as a security precaution.
-- PHP 5.6 has been replaced by PHP 7.2 and PHP 7.0 has been replaced by PHP 7.3.
-- Nginx-ee package has been replaced by Nginx-wo (based on Nginx stable v1.16.0 with Brotli support)
-- HHVM stack has been removed
-- Let's Encrypt stack isn't based on letsencrypt-auto anymore, we use acme.sh to handle SSL certificates
-
-If you are going to migrate from EasyEngine v3, here some important informations :
-
-- Previous php upstreams in Nginx will not be overwritted
-- php5.6 and php7.0 will not be removed or uninstalled
-- previous Nginx common configurations will not be overwritted
+Detailed Getting Started guide with additional installation methods can be found in [the documentation](https://docs.wordops.net/getting-started/installation-guide/).
 
 ## Usage
 
 ### Standard WordPress sites
 
 ```bash
-wo site create example.com --wp                  # install wordpress without any page caching
-wo site create example.com --wp  --php73         # install wordpress with PHP 7.3  without any page caching
-wo site create example.com --wpsc                # install wordpress with wp-super-cache plugin
+wo site create example.com --wp                  # install wordpress with PHP 7.3 without any page caching
+wo site create example.com --wp  --php72         # install wordpress with PHP 7.2  without any page caching
+wo site create example.com --wp  --php74         # install wordpress with PHP 7.4  without any page caching
 wo site create example.com --wpfc                # install wordpress + nginx fastcgi_cache
 wo site create example.com --wpredis             # install wordpress + nginx redis_cache
+wo site create example.com --wprocket            # install wordpress with WP-Rocket plugin
+wo site create example.com --wpce                # install wordpress with Cache-enabler plugin
+wo site create example.com --wpsc                # install wordpress with wp-super-cache plugin
 ```
 
 ### WordPress multisite with subdirectory
@@ -110,6 +101,8 @@ wo site create example.com --wpsubdir            # install wpmu-subdirectory wit
 wo site create example.com --wpsubdir --wpsc     # install wpmu-subdirectory with wp-super-cache plugin
 wo site create example.com --wpsubdir --wpfc     # install wpmu-subdirectory + nginx fastcgi_cache
 wo site create example.com --wpsubdir --wpredis  # install wpmu-subdirectory + nginx redis_cache
+wo site create example.com --wpsubdir --wprocket # install wpmu-subdirectory + WP-Rocket plugin
+wo site create example.com --wpsubdir --wpce     # install wpmu-subdirectory + Cache-Enabler plugin
 ```
 
 ### WordPress multisite with subdomain
@@ -119,23 +112,38 @@ wo site create example.com --wpsubdomain            # install wpmu-subdomain wit
 wo site create example.com --wpsubdomain --wpsc     # install wpmu-subdomain with wp-super-cache plugin
 wo site create example.com --wpsubdomain --wpfc     # install wpmu-subdomain + nginx fastcgi_cache
 wo site create example.com --wpsubdomain --wpredis  # install wpmu-subdomain + nginx redis_cache
+wo site create example.com --wpsubdomain --wprocket # install wpmu-subdomain + WP-Rocket plugin
+wo site create example.com --wpsubdomain --wpce     # install wpmu-subdomain + Cache-Enabler plugin
 ```
 
 ### Non-WordPress sites
 
 ```bash
 wo site create example.com --html     # create example.com for static/html sites
-wo site create example.com --php      # create example.com with php support
-wo site create example.com --mysql    # create example.com with php & mysql support
+wo site create example.com --php      # create example.com with php 7.3 support
+wo site create example.com --php72      # create example.com with php 7.2 support
+wo site create example.com --php74      # create example.com with php 7.4 support
+wo site create example.com --mysql    # create example.com with php 7.3 & mysql support
+wo site create example.com --mysql --php72   # create example.com with php 7.2 & mysql support
+wo site create example.com --mysql --php74   # create example.com with php 7.4 & mysql support
 wo site create example.com --proxy=127.0.0.1:3000 #  create example.com with nginx as reverse-proxy
+```
+
+### Switch between PHP versions
+
+```bash
+wo site update example.com --php72 # switch to PHP 7.2
+wo site update example.com --php73 # switch to PHP 7.3
+wo site update example.com --php74 # switch to PHP 7.4
 ```
 
 ### Sites secured with Let's Encrypt
 
 ```bash
-wo site create example.com --wp --letsencrypt # install wordpress & secure site with letsencrypt
-wo site create sub.example.com --wp --letsencrypt=subdomain # install wordpress and secure subdomain with letsencrypt
-wo site create site.tld --wp --letsencrypt --hsts # install wordpress & secure site with letsencrypt with HSTS
+wo site create example.com --wp -le #  wordpress & letsencrypt
+wo site create sub.example.com --wp -le # wordpress & letsencrypt subdomain
+wo site create example.com --wp --letsencrypt --hsts # wordpress & letsencrypt with HSTS
+wo site create example.com --wp -le=wildcard --dns=dns_cf # wordpress & wildcard SSL certificate with Cloudflare DNS API
 ```
 
 ## Update WordOps
@@ -167,12 +175,31 @@ Apps & Tools shipped with WordOps :
 - [Composer](https://github.com/composer/composer)
 - [Adminer](https://www.adminer.org/)
 - [phpRedisAdmin](https://github.com/erikdubbelboer/phpRedisAdmin)
-- [PHPMemcachedAdmin](https://github.com/elijaa/phpmemcachedadmin)
 - [opcacheGUI](https://github.com/amnuts/opcache-gui)
 - [eXtplorer](https://github.com/soerennb/extplorer)
 - [MySQLTuner](https://github.com/major/MySQLTuner-perl/)
 - [Webgrind](https://github.com/jokkedk/webgrind)
+- [MySQLTuner](https://github.com/major/MySQLTuner-perl)
+- [Fail2Ban](https://github.com/fail2ban/fail2ban)
+- [ClamAV](https://github.com/Cisco-Talos/clamav-devel)
+- [cheat.sh](https://github.com/chubin/cheat.sh)
+- [ProFTPd](https://github.com/proftpd/proftpd)
+- [Nginx-ultimate-bad-bot-blocker](https://github.com/mitchellkrogza/nginx-ultimate-bad-bot-blocker/)
+- [Nanorc](https://github.com/scopatz/nanorc)
 
+Third-party debian packages shipped with WordOps :
+
+- [Nginx-wo by WordOps](https://build.opensuse.org/package/show/home:virtubox:WordOps/nginx)
+- [PHP by Ondřej Surý](https://launchpad.net/~ondrej/+archive/ubuntu/php)
+- [Redis by Chris Lea](https://launchpad.net/~chris-lea/+archive/ubuntu/redis-server)
+
+WordPress Cache Plugins supported by WordOps :
+
+- [Nginx-helper](https://github.com/rtCamp/nginx-helper)
+- [Cache-Enabler](https://github.com/keycdn/cache-enabler)
+- [Redis-object-cache](https://github.com/tillkruss/redis-cache)
+- [WP-Super-Cache](https://github.com/Automattic/wp-super-cache)
+- [WP-Rocket](https://github.com/wp-media/wp-rocket)
 
 ## License
 

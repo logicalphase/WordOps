@@ -1,24 +1,26 @@
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1
+
 [recidive]
 enabled = true
 
-[nginx-http-auth]
+{{#nginx}}[nginx-http-auth]
 enabled   = true
+logpath = /var/log/nginx/*error*.log
 
 [nginx-botsearch]
 enabled   = true
+logpath = /var/log/nginx/*access*.log
 
 [wo-wordpress]
 enabled = true
 filter = wo-wordpress
 action = iptables-multiport[name="wo-wordpress", port="http,https"]
-logpath = /var/log/nginx/*access.log
+logpath = /var/log/nginx/*access*.log
 maxretry = 5
 
 [nginx-forbidden]
 enabled = true
 filter = nginx-forbidden
-port = http,https
-logpath = /var/log/nginx/*error*.log
-findtime = 60
-bantime = 6000
-maxretry = 5
+action = iptables-multiport[name="nginx-forbidden", port="http,https"]
+logpath = /var/log/nginx/*error*.log{{/nginx}}

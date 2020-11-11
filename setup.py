@@ -1,18 +1,17 @@
 
-from setuptools import setup, find_packages
-import sys
-import os
 import glob
-import configparser
-import re
-import shutil
+import os
+import sys
+
+from setuptools import find_packages, setup
+
+# read the contents of your README file
+this_directory = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(this_directory, 'README.md'), encoding='utf-8') as f:
+    LONG = f.read()
 
 conf = []
 templates = []
-
-long_description = '''WordOps is the commandline tool to manage your
-                      Websites based on WordPress and Nginx with easy to use
-                      commands'''
 
 for name in glob.glob('config/plugins.d/*.conf'):
     conf.insert(1, name)
@@ -20,73 +19,63 @@ for name in glob.glob('config/plugins.d/*.conf'):
 for name in glob.glob('wo/cli/templates/*.mustache'):
     templates.insert(1, name)
 
-if not os.path.exists('/var/log/wo/'):
-    os.makedirs('/var/log/wo/')
+if os.geteuid() == 0:
+    if not os.path.exists('/var/log/wo/'):
+        os.makedirs('/var/log/wo/')
 
-if not os.path.exists('/var/lib/wo/'):
-    os.makedirs('/var/lib/wo/')
+    if not os.path.exists('/var/lib/wo/tmp/'):
+        os.makedirs('/var/lib/wo/tmp/')
 
-# WordOps git configuration management
-config = configparser.ConfigParser()
-config.read(os.path.expanduser("~")+'/.gitconfig')
-try:
-    wo_user = config['user']['name']
-    wo_email = config['user']['email']
-except Exception as e:
-    print("WordOps (wo) require an username & and an email "
-          "address to configure Git (used to save server configurations)")
-    print("Your informations will ONLY be stored locally")
-
-    wo_user = input("Enter your name: ")
-    while wo_user == "":
-        print("Unfortunately, this can't be left blank")
-        wo_user = input("Enter your name: ")
-
-    wo_email = input("Enter your email: ")
-
-    while not re.match(r"^[A-Za-z0-9\.\+_-]+@[A-Za-z0-9\._-]+\.[a-zA-Z]*$",
-                       wo_email):
-        print("Whoops, seems like you made a typo - "
-              "the e-mailaddress is invalid...")
-        wo_email = input("Enter your email: ")
-
-    os.system("git config --global user.name {0}".format(wo_user))
-    os.system("git config --global user.email {0}".format(wo_email))
-
-if not os.path.isfile('/root/.gitconfig'):
-    shutil.copy2(os.path.expanduser("~")+'/.gitconfig', '/root/.gitconfig')
-
-setup(name='wo',
-      version='3.9.5',
-      description=long_description,
-      long_description=long_description,
-      classifiers=[],
-      keywords='',
+setup(name='wordops',
+      version='3.13.2',
+      description='An essential toolset that eases server administration',
+      long_description=LONG,
+      long_description_content_type='text/markdown',
+      classifiers=[
+          "Programming Language :: Python :: 3",
+          "License :: OSI Approved :: MIT License",
+          "Operating System :: OS Independent",
+          "Development Status :: 5 - Production/Stable",
+          "Environment :: Console",
+          "Natural Language :: English",
+          "Topic :: System :: Systems Administration",
+      ],
+      keywords='nginx automation wordpress deployment CLI',
       author='WordOps',
-      author_email='core@wordops.net',
-      url='https://wordops.net',
+      author_email='contact@wordops.io',
+      url='https://github.com/WordOps/WordOps',
       license='MIT',
+      project_urls={
+          'Documentation': 'https://docs.wordops.net',
+          'Forum': 'https://community.wordops.net',
+          'Source': 'https://github.com/WordOps/WordOps',
+          'Tracker': 'https://github.com/WordOps/WordOps/issues',
+      },
       packages=find_packages(exclude=['ez_setup', 'examples', 'tests',
                                       'templates']),
       include_package_data=True,
       zip_safe=False,
       test_suite='nose.collector',
+      python_requires='>=3.4',
       install_requires=[
           # Required to build documentation
           # "Sphinx >= 1.0",
-          # Required for testing
-          # "nose",
-          # "coverage",
           # Required to function
-          'cement == 2.4',
-          'pystache',
-          'python-apt',
-          'pynginxconfig',
-          'PyMySQL == 0.8.0',
-          'psutil == 3.1.1',
-          'sh',
-          'SQLAlchemy',
+          'cement == 2.10.12',
+          'pystache >= 0.5.4',
+          'pynginxconfig >= 0.3.4',
+          'PyMySQL >= 0.10.0',
+          'psutil >= 5.7.2',
+          'sh >= 1.12.14',
+          'SQLAlchemy >= 1.3.18',
+          'requests >= 2.24.0',
+          'distro >= 1.4.0',
+          'argcomplete >= 1.12.0',
+          'colorlog >= 4.2.1',
       ],
+      extras_require={  # Optional
+          'testing': ['nose', 'coverage'],
+      },
       data_files=[('/etc/wo', ['config/wo.conf']),
                   ('/etc/wo/plugins.d', conf),
                   ('/usr/lib/wo/templates', templates),

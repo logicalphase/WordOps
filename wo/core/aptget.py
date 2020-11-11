@@ -1,12 +1,13 @@
 """WordOps package installation using apt-get module."""
-import apt
-import apt_pkg
-import sys
 import subprocess
-from wo.core.logging import Log
+import sys
+import os
+
+from sh import ErrorReturnCode, apt_get
+
+import apt
 from wo.core.apt_repo import WORepo
-from sh import apt_get
-from sh import ErrorReturnCode
+from wo.core.logging import Log
 
 
 class WOAptGet():
@@ -18,14 +19,22 @@ class WOAptGet():
         """
         try:
             with open('/var/log/wo/wordops.log', 'a') as f:
-                proc = subprocess.Popen('apt-get update',
-                                        shell=True,
-                                        stdin=None, stdout=f,
-                                        stderr=subprocess.PIPE,
-                                        executable="/bin/bash")
+                proc = subprocess.Popen(
+                    'DEBIAN_FRONTEND=noninteractive apt-get update -qq '
+                    '--allow-releaseinfo-change',
+                    shell=True, stdin=None, stdout=f,
+                    stderr=subprocess.PIPE, executable="/bin/bash")
                 proc.wait()
                 output, error_output = proc.communicate()
 
+                if "--allow-releaseinfo-change" in str(error_output):
+                    proc = subprocess.Popen(
+                        'DEBIAN_FRONTEND=noninteractive apt-get update -qq',
+                        shell=True,
+                        stdin=None, stdout=f, stderr=f,
+                        executable="/bin/bash")
+                    proc.wait()
+                    output, error_output = proc.communicate()
                 # Check what is error in error_output
                 if "NO_PUBKEY" in str(error_output):
                     # Split the output
@@ -39,10 +48,11 @@ class WOAptGet():
                             WORepo.add_key(
                                 self, key, keyserver="hkp://pgp.mit.edu")
 
-                    proc = subprocess.Popen('apt-get update',
-                                            shell=True,
-                                            stdin=None, stdout=f, stderr=f,
-                                            executable="/bin/bash")
+                    proc = subprocess.Popen(
+                        'DEBIAN_FRONTEND=noninteractive apt-get update -qq',
+                        shell=True,
+                        stdin=None, stdout=f, stderr=f,
+                        executable="/bin/bash")
                     proc.wait()
 
                 if proc.returncode == 0:
@@ -54,7 +64,7 @@ class WOAptGet():
                               "`tail /var/log/wo/wordops.log` "
                               "and please try again...")
 
-        except Exception as e:
+        except Exception:
             Log.error(self, "apt-get update exited with error")
 
     def check_upgrade(self):
@@ -74,6 +84,7 @@ class WOAptGet():
                              stdout=sys.stdout).communicate()
 
         except Exception as e:
+            Log.debug(self, "{0}".format(e))
             Log.error(self, "Unable to check for packages upgrades")
 
     def dist_upgrade(self):
@@ -82,15 +93,16 @@ class WOAptGet():
         """
         try:
             with open('/var/log/wo/wordops.log', 'a') as f:
-                proc = subprocess.Popen("DEBIAN_FRONTEND=noninteractive "
-                                        "apt-get dist-upgrade -o "
-                                        "Dpkg::Options::=\"--force-confdef\""
-                                        " -o "
-                                        "Dpkg::Options::=\"--force-confold\""
-                                        " -y ",
-                                        shell=True, stdin=None,
-                                        stdout=f, stderr=f,
-                                        executable="/bin/bash")
+                proc = subprocess.Popen(
+                    "DEBIAN_FRONTEND=noninteractive "
+                    "apt-get "
+                    "--option=Dpkg::options::=--force-confdef "
+                    "--option=Dpkg::options::=--force-unsafe-io "
+                    "--option=Dpkg::options::=--force-confold "
+                    "--assume-yes --quiet dist-upgrade",
+                    shell=True, stdin=None,
+                    stdout=f, stderr=f,
+                    executable="/bin/bash")
                 proc.wait()
 
             if proc.returncode == 0:
@@ -102,6 +114,7 @@ class WOAptGet():
                           "`tail /var/log/wo/wordops.log` "
                           "and please try again...")
         except Exception as e:
+            Log.debug(self, "{0}".format(e))
             Log.error(self, "Error while installing packages, "
                       "apt-get exited with error")
 
@@ -109,15 +122,15 @@ class WOAptGet():
         all_packages = ' '.join(packages)
         try:
             with open('/var/log/wo/wordops.log', 'a') as f:
-                proc = subprocess.Popen("DEBIAN_FRONTEND=noninteractive "
-                                        "apt-get install -o "
-                                        "Dpkg::Options::=\"--force-confdef\""
-                                        " -o "
-                                        "Dpkg::Options::=\"--force-confold\""
-                                        " -y --allow-unauthenticated {0}"
-                                        .format(all_packages), shell=True,
-                                        stdin=None, stdout=f, stderr=f,
-                                        executable="/bin/bash")
+                proc = subprocess.Popen(
+                    "DEBIAN_FRONTEND=noninteractive "
+                    "apt-get install "
+                    "--option=Dpkg::options::=--force-confdef "
+                    "--option=Dpkg::options::=--force-confold "
+                    "--assume-yes --allow-unauthenticated {0}"
+                    .format(all_packages), shell=True,
+                    stdin=None, stdout=f, stderr=f,
+                    executable="/bin/bash")
                 proc.wait()
 
             if proc.returncode == 0:
@@ -130,6 +143,7 @@ class WOAptGet():
                           "and please try again...")
 
         except Exception as e:
+            Log.debug(self, "{0}".format(e))
             Log.info(self, Log.FAIL + "Oops Something went "
                      "wrong!!")
             Log.error(self, "Check the WordOps log for more details "
@@ -141,15 +155,19 @@ class WOAptGet():
         try:
             with open('/var/log/wo/wordops.log', 'a') as f:
                 if purge:
-                    proc = subprocess.Popen('apt-get purge -y {0}'
-                                            .format(all_packages), shell=True,
-                                            stdin=None, stdout=f, stderr=f,
-                                            executable="/bin/bash")
+                    proc = subprocess.Popen(
+                        'DEBIAN_FRONTEND=noninteractive '
+                        'apt-get autoremove --purge -qq {0}'
+                        .format(all_packages), shell=True,
+                        stdin=None, stdout=f, stderr=f,
+                        executable="/bin/bash")
                 else:
-                    proc = subprocess.Popen('apt-get remove -y {0}'
-                                            .format(all_packages), shell=True,
-                                            stdin=None, stdout=f, stderr=f,
-                                            executable="/bin/bash")
+                    proc = subprocess.Popen(
+                        'DEBIAN_FRONTEND=noninteractive '
+                        'apt-get autoremove -qq {0}'
+                        .format(all_packages), shell=True,
+                        stdin=None, stdout=f, stderr=f,
+                        executable="/bin/bash")
                 proc.wait()
             if proc.returncode == 0:
                 return True
@@ -161,6 +179,7 @@ class WOAptGet():
                           "and please try again...")
 
         except Exception as e:
+            Log.debug(self, "{0}".format(e))
             Log.error(self, "Error while installing packages, "
                       "apt-get exited with error")
 
@@ -170,7 +189,7 @@ class WOAptGet():
         """
         try:
             orig_out = sys.stdout
-            sys.stdout = open(self.app.config.get('log.logging', 'file'),
+            sys.stdout = open(self.app.config.get('log.colorlog', 'file'),
                               encoding='utf-8', mode='a')
             apt_get.autoclean("-y")
             sys.stdout = orig_out
@@ -204,6 +223,29 @@ class WOAptGet():
         # apt_cache.close()
         return False
 
+    def is_exec(self, package_name):
+        """
+        Check if package is available by looking
+        for an executable or a systemd service related
+        to this package
+        """
+        exec_path = ["/bin", "/usr/bin", "/usr/local/bin",
+                     "/usr/sbin", "/usr/local/sbin"]
+        for path in exec_path:
+            if os.path.exists('{0}/{1}'.format(path, package_name)):
+                return True
+        return False
+
+    def is_selected(self, package_name, packages_list):
+        """
+        Check if package is selected for install/removal/purge
+        in packages_list
+        """
+        for package in packages_list:
+            if package_name == package[2]:
+                return True
+        return False
+
     def download_only(self, package_name, repo_url=None, repo_key=None):
         """
         Similar to `apt-get install --download-only PACKAGE_NAME`
@@ -215,16 +257,18 @@ class WOAptGet():
                     WORepo.add(self, repo_url=repo_url)
                 if repo_key is not None:
                     WORepo.add_key(self, repo_key)
-                proc = subprocess.Popen("apt-get update && "
-                                        "DEBIAN_FRONTEND=noninteractive "
-                                        "apt-get install -o "
-                                        "Dpkg::Options::=\"--force-confdef\""
-                                        " -o "
-                                        "Dpkg::Options::=\"--force-confold\""
-                                        " -y  --download-only {0}"
-                                        .format(packages), shell=True,
-                                        stdin=None, stdout=f, stderr=f,
-                                        executable="/bin/bash")
+                proc = subprocess.Popen(
+                    "DEBIAN_FRONTEND=noninteractive apt-get update "
+                    "-qq && "
+                    "DEBIAN_FRONTEND=noninteractive "
+                    "apt-get install -o "
+                    "Dpkg::Options::=\"--force-confdef\""
+                    " -o "
+                    "Dpkg::Options::=\"--force-confold\""
+                    " -y --download-only {0}"
+                    .format(packages), shell=True,
+                    stdin=None, stdout=f, stderr=f,
+                    executable="/bin/bash")
                 proc.wait()
 
             if proc.returncode == 0:
@@ -237,5 +281,6 @@ class WOAptGet():
                     WORepo.remove(self, repo_url=repo_url)
                 return False
         except Exception as e:
+            Log.debug(self, "{0}".format(e))
             Log.error(self, "Error while downloading packages, "
                       "apt-get exited with error")

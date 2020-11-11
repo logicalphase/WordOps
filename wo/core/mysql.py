@@ -1,12 +1,12 @@
 """WordOps MySQL core classes."""
-import pymysql
-from pymysql import connections, DatabaseError, Error
-import configparser
-from os.path import expanduser
-import sys
 import os
+from os.path import expanduser
+
+import pymysql
+from pymysql import DatabaseError, Error, connections
+
 from wo.core.logging import Log
-from wo.core.variables import WOVariables
+from wo.core.variables import WOVar
 
 
 class MySQLConnectionError(Exception):
@@ -31,9 +31,8 @@ class WOMysql():
         # Makes connection with MySQL server
         try:
             if os.path.exists('/etc/mysql/conf.d/my.cnf'):
-                connection = \
-                    pymysql.connect(read_default_file='/etc/mysql/'
-                                    'conf.d/my.cnf')
+                connection = pymysql.connect(
+                    read_default_file='/etc/mysql/conf.d/my.cnf')
             else:
                 connection = pymysql.connect(read_default_file='~/.my.cnf')
             return connection
@@ -54,14 +53,14 @@ class WOMysql():
                     db=db_name, read_default_file='~/.my.cnf')
 
             return connection
+        except pymysql.err.InternalError as e:
+            Log.debug(self, str(e))
+            raise MySQLConnectionError
         except DatabaseError as e:
             if e.args[1] == '#42000Unknown database \'{0}\''.format(db_name):
                 raise DatabaseNotExistsError
             else:
                 raise MySQLConnectionError
-        except pymysql.err.InternalError as e:
-            Log.debug(self, str(e))
-            raise MySQLConnectionError
         except Exception as e:
             Log.debug(self, "[Error]Setting up database: \'" + str(e) + "\'")
             raise MySQLConnectionError
@@ -70,7 +69,7 @@ class WOMysql():
         # Get login details from /etc/mysql/conf.d/my.cnf
         # & Execute MySQL query
         connection = WOMysql.connect(self)
-        log and Log.debug(self, "Exceuting MySQL Statement : {0}"
+        log and Log.debug(self, "Executing MySQL Statement : {0}"
                           .format(statement))
         try:
             cursor = connection.cursor()
@@ -89,37 +88,57 @@ class WOMysql():
         finally:
             connection.close()
 
-    def backupAll(self):
+    def backupAll(self, fulldump=False):
         import subprocess
         try:
             Log.info(self, "Backing up database at location: "
-                     "/var/wo-mysqlbackup")
+                     "/var/lib/wo-backup/mysql")
             # Setup Nginx common directory
-            if not os.path.exists('/var/wo-mysqlbackup'):
+            if not os.path.exists('/var/lib/wo-backup/mysql'):
                 Log.debug(self, 'Creating directory'
-                          '/var/wo-mysqlbackup')
-                os.makedirs('/var/wo-mysqlbackup')
-
-            db = subprocess.check_output(["/usr/bin/mysql "
-                                          "-Bse \'show databases\'"],
-                                         universal_newlines=True,
-                                         shell=True).split('\n')
-            for dbs in db:
-                if dbs == "":
-                    continue
-                Log.info(self, "Backing up {0} database".format(dbs))
-                p1 = subprocess.Popen("/usr/bin/mysqldump {0}"
-                                      " --max_allowed_packet=1024M"
-                                      " --single-transaction".format(dbs),
-                                      stdout=subprocess.PIPE,
-                                      stderr=subprocess.PIPE, shell=True)
-                p2 = subprocess.Popen("/usr/bin/pigz -c > "
-                                      "/var/wo-mysqlbackup/{0}{1}.sql.gz"
-                                      .format(dbs, WOVariables.wo_date),
-                                      stdin=p1.stdout,
-                                      shell=True)
-
-                # Allow p1 to receive a SIGPIPE if p2 exits
+                          '/var/lib/wo-backup/mysql')
+                os.makedirs('/var/lib/wo-backup/mysql')
+            if not fulldump:
+                db = subprocess.check_output(
+                    ["/usr/bin/mysql "
+                     "-Bse \'show databases\'"],
+                    universal_newlines=True,
+                    shell=True).split('\n')
+                for dbs in db:
+                    if dbs == "":
+                        continue
+                    Log.info(self, "Backing up {0} database".format(dbs))
+                    p1 = subprocess.Popen(
+                        "/usr/bin/mysqldump {0} --max_allowed_packet=1024M "
+                        "--single-transaction ".format(dbs),
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE, shell=True)
+                    p2 = subprocess.Popen(
+                        "/usr/bin/zstd -T0 -c > "
+                        "/var/lib/wo-backup/mysql/{0}{1}.sql.zst"
+                        .format(dbs, WOVar.wo_date),
+                        stdin=p1.stdout, shell=True)
+                    # Allow p1 to receive a SIGPIPE if p2 exits
+                    p1.stdout.close()
+                    output = p1.stderr.read()
+                    p1.wait()
+                    if p1.returncode == 0:
+                        Log.debug(self, "done")
+                    else:
+                        Log.error(self, output.decode("utf-8"))
+            else:
+                Log.info(self, "Backing up all databases")
+                p1 = subprocess.Popen(
+                    "/usr/bin/mysqldump --all-databases "
+                    "--max_allowed_packet=1024M "
+                    "--single-transaction --events",
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE, shell=True)
+                p2 = subprocess.Popen(
+                    "/usr/bin/zstd -T0 -c > "
+                    "/var/lib/wo-backup/mysql/fulldump-{0}.sql.zst"
+                    .format(WOVar.wo_date),
+                    stdin=p1.stdout, shell=True)
                 p1.stdout.close()
                 output = p1.stderr.read()
                 p1.wait()
@@ -127,6 +146,7 @@ class WOMysql():
                     Log.debug(self, "done")
                 else:
                     Log.error(self, output.decode("utf-8"))
+
         except Exception as e:
             Log.error(self, "Error: process exited with status %s"
                             % e)

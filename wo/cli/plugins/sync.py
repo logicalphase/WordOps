@@ -1,9 +1,12 @@
+import glob
+import os
+
 from cement.core.controller import CementBaseController, expose
-from cement.core import handler, hook
+
+from wo.cli.plugins.sitedb import getAllsites, updateSiteInfo
 from wo.core.fileutils import WOFileUtils
-from wo.cli.plugins.sitedb import *
-from wo.core.mysql import *
 from wo.core.logging import Log
+from wo.core.mysql import StatementExcecutionError, WOMysql
 
 
 def wo_sync_hook(app):
@@ -37,30 +40,42 @@ class WOSyncController(CementBaseController):
                 # Read config files
                 configfiles = glob.glob(wo_site_webroot + '/*-config.php')
 
+                if (os.path.exists(
+                    '{0}/ee-config.php'.format(wo_site_webroot)) and
+                    os.path.exists(
+                        '{0}/wo-config.php'.format(wo_site_webroot))):
+                    configfiles = glob.glob(
+                        wo_site_webroot + 'wo-config.php')
+
                 # search for wp-config.php inside htdocs/
                 if not configfiles:
                     Log.debug(self, "Config files not found in {0}/ "
                                     .format(wo_site_webroot))
                     if site.site_type != 'mysql':
-                        Log.debug(self, "Searching wp-config.php in {0}/htdocs/ "
-                                        .format(wo_site_webroot))
+                        Log.debug(self,
+                                  "Searching wp-config.php in {0}/htdocs/"
+                                  .format(wo_site_webroot))
                         configfiles = glob.glob(
                             wo_site_webroot + '/htdocs/wp-config.php')
 
                 if configfiles:
                     if WOFileUtils.isexist(self, configfiles[0]):
-                        wo_db_name = (WOFileUtils.grep(self, configfiles[0],
-                                                       'DB_NAME').split(',')[1]
-                                      .split(')')[0].strip().replace('\'', ''))
-                        wo_db_user = (WOFileUtils.grep(self, configfiles[0],
-                                                       'DB_USER').split(',')[1]
-                                      .split(')')[0].strip().replace('\'', ''))
-                        wo_db_pass = (WOFileUtils.grep(self, configfiles[0],
-                                                       'DB_PASSWORD').split(',')[1]
-                                      .split(')')[0].strip().replace('\'', ''))
-                        wo_db_host = (WOFileUtils.grep(self, configfiles[0],
-                                                       'DB_HOST').split(',')[1]
-                                      .split(')')[0].strip().replace('\'', ''))
+                        wo_db_name = (
+                            WOFileUtils.grep(self, configfiles[0],
+                                             'DB_NAME').split(',')[1]
+                            .split(')')[0].strip().replace('\'', ''))
+                        wo_db_user = (
+                            WOFileUtils.grep(self, configfiles[0],
+                                             'DB_USER').split(',')[1]
+                            .split(')')[0].strip().replace('\'', ''))
+                        wo_db_pass = (
+                            WOFileUtils.grep(self, configfiles[0],
+                                             'DB_PASSWORD').split(',')[1]
+                            .split(')')[0].strip().replace('\'', ''))
+                        wo_db_host = (
+                            WOFileUtils.grep(self, configfiles[0],
+                                             'DB_HOST').split(',')[1]
+                            .split(')')[0].strip().replace('\'', ''))
 
                         # Check if database really exist
                         try:
@@ -90,6 +105,6 @@ class WOSyncController(CementBaseController):
 
 def load(app):
     # register the plugin class.. this only happens if the plugin is enabled
-    handler.register(WOSyncController)
+    app.handler.register(WOSyncController)
     # register a hook (function) to run after arguments are parsed.
-    hook.register('post_argument_parsing', wo_sync_hook)
+    app.hook.register('post_argument_parsing', wo_sync_hook)

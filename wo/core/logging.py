@@ -38,10 +38,51 @@ class Log:
         Logs warning into log file
         """
         print(Log.WARNING + msg + Log.ENDC)
-        self.app.log.warn(Log.BOLD + msg + Log.ENDC)
+        self.app.log.warning(Log.BOLD + msg + Log.ENDC)
 
     def debug(self, msg):
         """
         Logs debug messages into log file
         """
-        self.app.log.debug(Log.HEADER + msg + Log.ENDC)
+        self.app.log.debug(Log.HEADER + msg + Log.ENDC, __name__)
+
+    def wait(self, msg, end='\r', log=True):
+        """
+        Logs info messages with validation step
+        """
+        space_to_add = int(31 - len(msg[0:31]))
+        space = "                             "
+        print(
+            Log.OKBLUE + "{0}".format(msg[0:31]) +
+            "{0}".format(space[0:space_to_add]) +
+            " [" + Log.ENDC + ".." + Log.OKBLUE + "]" + Log.ENDC, end=end)
+        if log:
+            self.app.log.info(Log.OKBLUE + msg + Log.ENDC)
+
+    def valide(self, msg, end='\n', log=True):
+        """
+        Logs info messages after validation step
+        """
+        space_to_add = int(31 - len(msg[0:31]))
+        space = "                              "
+        print(
+            Log.OKBLUE + "{0}".format(msg[0:31]) +
+            "{0}".format(space[0:space_to_add]) +
+            " [" + Log.ENDC + Log.OKGREEN + "OK" +
+            Log.ENDC + Log.OKBLUE + "]" + Log.ENDC, end=end)
+        if log:
+            self.app.log.info(Log.OKGREEN + msg + Log.ENDC)
+
+    def failed(self, msg, end='\n', log=True):
+        """
+        Logs info messages after validation step
+        """
+        space_to_add = int(31 - len(msg[0:31]))
+        space = "                             "
+        print(
+            Log.OKBLUE + "{0}".format(msg[0:31]) +
+            "{0}".format(space[0:space_to_add]) +
+            " [" + Log.ENDC + Log.FAIL + "KO" +
+            Log.ENDC + Log.OKBLUE + "]" + Log.ENDC, end=end)
+        if log:
+            self.app.log.info(Log.FAIL + msg + Log.ENDC)

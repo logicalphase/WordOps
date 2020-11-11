@@ -1,57 +1,45 @@
-language: bash
+language: shell
+
+jobs:
+  include:
+    - if: branch = master
+      os: linux
+      dist: xenial
+    - if: branch = master
+      os: linux
+      dist: bionic
+    - if: branch = master
+      os: linux
+      dist: focal
 
 notifications:
-  slack: wordops:MyZBNbI7JfhbAi3YyFckMdaa
+  webhooks:
+    secure: "JiGtzYplTyFg/L6Rsi7ptEQIV29O5qCWU2Zf5pLITsQrBrQO4cIXXp9G4Z+cenXjfIiqbqIgU0US3zXeIAl4g14xdfzmMYeMMwuKBpI8afMYv8MD6ldoP0MTFHQfROE6OXxKLVUvZn1R0oLLU1fzVSI0qGjNkt20cf/Lrt/reH/zS5hAI92kWI3u2zPu7Zn/g/a8MO/Y3Iv7v1PSQaVkVJVqtOK3U2GJqhIv2G1AVcaPb7Nh/V2zm2dDYBVT0UotBnlBUcUXbEMP77D9pjtWXd1/0rWuJIHixMjwUybpZqY75UMee5INynU6OZRsv029LRHAIMkWhfBkdVN/U5jhQJzui14+vRQrb5nfUMG8Cd8INojDlu6dk/ps2GzTCCXBITeMQKAouUoHD2LEbsNp17xi1K4ZlKb3+0lrOAiS4JYFE6wOo4yMlLTYoquYSqk7AuxuUS8A5OD5MYxhk9uafiTSxKFOo39KYWTSaACsPD8q1swaTSjoYm9skyZvIkIFq5bHBCYEGFe6X/NY9l5tz3hSe+TJOerCHsg+dXVuQl+pIp5nw2as9TH9ox5Vgqc9Zh4GbTDQVvdAmUpmlsZ/SKoOMCkmkB1aRNFq/7RnERIJyAEGJbauHWmjtOM4cCxesl0L0b2Eab89zQpSn7pzE8JTiJgpzCUc22p653PTaqM="
 
-dist: xenial
+git:
+  quiet: true
 
 before_install:
   - rm -rf ~/.gnupg
 
 before_script:
-  - sudo rm -rf /etc/mysql/
+  - sudo rm -rf /etc/mysql
   - sudo bash -c 'echo example.com > /etc/hostname'
-  - sudo apt-get -qq purge mysql* graphviz*
+  - unset LANG
+  - sudo apt-get update -qq
+  - sudo apt-get -qq purge mysql* graphviz* redis* php*
   - sudo apt-get -qq autoremove --purge
-addons:
-  apt:
-    update: true
 
-git:
-  quiet: true
+
+after_script:
+  - sudo -E python3 setup.py sdist bdist_wheel
+  - sudo -E bash install --purge
+
 
 script:
   - lsb_release -a
-  - unset LANG
   - sudo bash -c 'echo -e "[user]\n\tname = abc\n\temail = root@localhost.com" > /home/travis/.gitconfig'
   - sudo echo "Travis Banch = $TRAVIS_BRANCH"
-  - sudo apt-get install -y --force-yes git python3-setuptools python3-dev python3-apt ccze tree
-  - sudo bash install -b $TRAVIS_BRANCH --travis
-  - sudo wo --help && sudo wo stack install
-
-  - sudo wo site create html.net --html && sudo wo site create php.com --php && sudo wo site create mysql.com --mysql || sudo tail -n50 /var/log/wo/wordops.log
-  - sudo wo site create proxy.com --proxy=127.0.0.1:3000 || sudo tail -n50 /var/log/wo/wordops.log
-  - sudo wo site create wp1.com --wp || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsc1.net --wpsc && sudo wo site create wpfc1.com --wpfc || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsc-php73.net --wpsc --php73 && sudo wo site create wpfc-php73.net --wpfc --php73 || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpredis.net --wpredis && sudo wo site create wpredis-php73.net --wpredis --php73 || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsubdir1.com --wpsubdir && sudo wo site create wpsubdir-php73.com --wpsubdir --php73 || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsubdirwpsc1.com --wpsubdir --wpsc &&  sudo wo site create wpsubdirwpsc2.com --wpsubdir --wpfc || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsubdirwpsc1-php73.com --wpsubdir --wpsc --php73 && sudo wo site create wpsubdirwpsc2-php73.com --wpsubdir --wpfc --php73  || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsubdomain1.com --wpsubdomain && sudo wo site create wpsubdomain1-php73.com --wpsubdomain --php73 || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create wpsubdomainwpsc.org --wpsubdomain --wpsc && sudo wo site create wpsubdomainwpfc.org --wpsubdomain --wpfc && sudo wo site create wpsubdomainwpfc2.in --wpfc --wpsubdomain  || sudo tail -n50 /var/log/wo/wordops.log
-
-  - sudo wo site create 1.com --html && sudo wo site create 2.com --php && sudo wo site create 3.com --mysql  || sudo tail -n50 /var/log/wo/wordops.log
-  - sudo wo site update 1.com --wp && sudo wo site update 2.com --php73 && sudo wo site update 3.com --php73 && sudo wo site update 1.com --wpfc && sudo wo site update 1.com --wpsc && sudo wo site update 1.com --wpredis || sudo tail -n50 /var/log/wo/wordops.log
-  - sudo wp --allow-root --info
-  - sudo wo info || sudo tail -n50 /var/log/wo/wordops.log
-  - sudo tree -L 2 /etc/nginx
-  - sudo tree -L 3 /var/www/22222/htdocs/
+  - sudo -E time bash install --travis -b "$TRAVIS_BRANCH"
+  - sudo -E time bash tests/travis.sh
+  - sudo -E wo update --travis

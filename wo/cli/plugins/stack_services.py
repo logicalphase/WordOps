@@ -1,9 +1,10 @@
+import os
+
 from cement.core.controller import CementBaseController, expose
-from cement.core import handler, hook
-from wo.core.services import WOService
 from wo.core.logging import Log
-from wo.core.variables import WOVariables
-from wo.core.aptget import WOAptGet
+from wo.core.services import WOService
+from wo.core.variables import WOVar
+from wo.core.fileutils import WOFileUtils
 
 
 class WOStackStatusController(CementBaseController):
@@ -12,55 +13,72 @@ class WOStackStatusController(CementBaseController):
         stacked_on = 'stack'
         stacked_type = 'embedded'
         description = 'Check the stack status'
-        arguments = [
-            (['--memcached'],
-                dict(help='start/stop/restart memcached',
-                     action='store_true')),
-        ]
 
     @expose(help="Start stack services")
     def start(self):
         """Start services"""
         services = []
-        if not (self.app.pargs.nginx or self.app.pargs.php or
-                self.app.pargs.php73 or
-                self.app.pargs.mysql or
-                self.app.pargs.memcached or
-                self.app.pargs.redis or
-                self.app.pargs.fail2ban or
-                self.app.pargs.netdata):
-            self.app.pargs.nginx = True
-            self.app.pargs.php = True
-            self.app.pargs.mysql = True
+        wo_system = "/lib/systemd/system/"
+        pargs = self.app.pargs
+        if not (pargs.nginx or pargs.php or
+                pargs.php72 or
+                pargs.php73 or
+                pargs.php74 or
+                pargs.mysql or
+                pargs.redis or
+                pargs.fail2ban or
+                pargs.proftpd or
+                pargs.netdata or
+                pargs.ufw):
+            pargs.nginx = True
+            pargs.php = True
+            pargs.mysql = True
+            pargs.fail2ban = True
+            pargs.netdata = True
+            pargs.ufw = True
 
-        if self.app.pargs.nginx:
-            if (WOAptGet.is_installed(self, 'nginx-custom')):
+        if pargs.nginx:
+            if os.path.exists('{0}'.format(wo_system) + 'nginx.service'):
                 services = services + ['nginx']
             else:
                 Log.info(self, "Nginx is not installed")
 
-        if self.app.pargs.php:
-            if WOAptGet.is_installed(self, 'php7.2-fpm'):
+        if pargs.php:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
                 services = services + ['php7.2-fpm']
             else:
                 Log.info(self, "PHP7.2-FPM is not installed")
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
+                services = services + ['php7.3-fpm']
+            else:
+                Log.info(self, "PHP7.3-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
+            else:
+                Log.info(self, "PHP7.4-FPM is not installed")
+
+        if pargs.php72:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
+                services = services + ['php7.2-fpm']
+            else:
+                Log.info(self, "PHP7.2-FPM is not installed")
+
+        if pargs.php73:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
                 services = services + ['php7.3-fpm']
             else:
                 Log.info(self, "PHP7.3-FPM is not installed")
 
-        if self.app.pargs.php73:
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
-                services = services + ['php7.3-fpm']
+        if pargs.php74:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
             else:
-                Log.info(self, "PHP7.3-FPM is not installed")
+                Log.info(self, "PHP7.4-FPM is not installed")
 
-        if self.app.pargs.mysql:
-            if ((WOVariables.wo_mysql_host is "localhost") or
-                    (WOVariables.wo_mysql_host is "127.0.0.1")):
-                if (WOAptGet.is_installed(self, 'mysql-server') or
-                    WOAptGet.is_installed(self, 'percona-server-server-5.6') or
-                        WOAptGet.is_installed(self, 'mariadb-server')):
+        if pargs.mysql:
+            if ((WOVar.wo_mysql_host == "localhost") or
+                    (WOVar.wo_mysql_host == "127.0.0.1")):
+                if os.path.exists('/etc/systemd/system/mysql.service'):
                     services = services + ['mysql']
                 else:
                     Log.info(self, "MySQL is not installed")
@@ -68,23 +86,32 @@ class WOStackStatusController(CementBaseController):
                 Log.warn(self, "Remote MySQL found, "
                          "Unable to check MySQL service status")
 
-        if self.app.pargs.memcached:
-            if WOAptGet.is_installed(self, 'memcached'):
-                services = services + ['memcached']
-            else:
-                Log.info(self, "Memcached is not installed")
-
-        if self.app.pargs.redis:
-            if WOAptGet.is_installed(self, 'redis-server'):
+        if pargs.redis:
+            if os.path.exists('{0}'.format(wo_system) +
+                              'redis-server.service'):
                 services = services + ['redis-server']
             else:
                 Log.info(self, "Redis server is not installed")
 
-        if self.app.pargs.fail2ban:
-            if WOAptGet.is_installed(self, 'fail2ban'):
-                services = services + ['fail2ban-client']
+        if pargs.fail2ban:
+            if os.path.exists('{0}'.format(wo_system) + 'fail2ban.service'):
+                services = services + ['fail2ban']
             else:
                 Log.info(self, "fail2ban is not installed")
+
+        # proftpd
+        if pargs.proftpd:
+            if os.path.exists('/etc/init.d/proftpd'):
+                services = services + ['proftpd']
+            else:
+                Log.info(self, "ProFTPd is not installed")
+
+        # netdata
+        if pargs.netdata:
+            if os.path.exists('{0}'.format(wo_system) + 'netdata.service'):
+                services = services + ['netdata']
+            else:
+                Log.info(self, "Netdata is not installed")
 
         for service in services:
             Log.debug(self, "Starting service: {0}".format(service))
@@ -94,44 +121,62 @@ class WOStackStatusController(CementBaseController):
     def stop(self):
         """Stop services"""
         services = []
-        if not (self.app.pargs.nginx or self.app.pargs.php or
-                self.app.pargs.php73 or
-                self.app.pargs.mysql or
-                self.app.pargs.memcached or
-                self.app.pargs.redis):
-            self.app.pargs.nginx = True
-            self.app.pargs.php = True
-            self.app.pargs.mysql = True
+        wo_system = "/lib/systemd/system/"
+        pargs = self.app.pargs
+        if not (pargs.nginx or pargs.php or
+                pargs.php72 or pargs.php73 or
+                pargs.php74 or
+                pargs.mysql or
+                pargs.fail2ban or
+                pargs.netdata or
+                pargs.proftpd or
+                pargs.redis):
+            pargs.nginx = True
+            pargs.php = True
+            pargs.mysql = True
 
-        if self.app.pargs.nginx:
-            if (WOAptGet.is_installed(self, 'nginx-custom')):
+        if pargs.nginx:
+            if os.path.exists('{0}'.format(wo_system) + 'nginx.service'):
                 services = services + ['nginx']
             else:
                 Log.info(self, "Nginx is not installed")
 
-        if self.app.pargs.php:
-            if WOAptGet.is_installed(self, 'php7.2-fpm'):
+        if pargs.php:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
+                services = services + ['php7.2-fpm']
+            else:
+                Log.info(self, "PHP7.2-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
+                services = services + ['php7.3-fpm']
+            else:
+                Log.info(self, "PHP7.3-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
+            else:
+                Log.info(self, "PHP7.4-FPM is not installed")
+
+        if pargs.php72:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
                 services = services + ['php7.2-fpm']
             else:
                 Log.info(self, "PHP7.2-FPM is not installed")
 
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
+        if pargs.php73:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
                 services = services + ['php7.3-fpm']
             else:
                 Log.info(self, "PHP7.3-FPM is not installed")
 
-        if self.app.pargs.php73:
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
-                services = services + ['php7.3-fpm']
+        if pargs.php74:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
             else:
-                Log.info(self, "PHP7.3-FPM is not installed")
+                Log.info(self, "PHP7.4-FPM is not installed")
 
-        if self.app.pargs.mysql:
-            if ((WOVariables.wo_mysql_host is "localhost") or
-                    (WOVariables.wo_mysql_host is "127.0.0.1")):
-                if (WOAptGet.is_installed(self, 'mysql-server') or
-                    WOAptGet.is_installed(self, 'percona-server-server-5.6') or
-                        WOAptGet.is_installed(self, 'mariadb-server')):
+        if pargs.mysql:
+            if ((WOVar.wo_mysql_host == "localhost") or
+                    (WOVar.wo_mysql_host == "127.0.0.1")):
+                if os.path.exists('/etc/systemd/system/mysql.service'):
                     services = services + ['mysql']
                 else:
                     Log.info(self, "MySQL is not installed")
@@ -139,23 +184,32 @@ class WOStackStatusController(CementBaseController):
                 Log.warn(self, "Remote MySQL found, "
                          "Unable to check MySQL service status")
 
-        if self.app.pargs.memcached:
-            if WOAptGet.is_installed(self, 'memcached'):
-                services = services + ['memcached']
-            else:
-                Log.info(self, "Memcached is not installed")
-
-        if self.app.pargs.redis:
-            if WOAptGet.is_installed(self, 'redis-server'):
+        if pargs.redis:
+            if os.path.exists('{0}'.format(wo_system) +
+                              'redis-server.service'):
                 services = services + ['redis-server']
             else:
                 Log.info(self, "Redis server is not installed")
 
-        if self.app.pargs.fail2ban:
-            if WOAptGet.is_installed(self, 'fail2ban'):
-                services = services + ['fail2ban-client']
+        if pargs.fail2ban:
+            if os.path.exists('{0}'.format(wo_system) + 'fail2ban.service'):
+                services = services + ['fail2ban']
             else:
                 Log.info(self, "fail2ban is not installed")
+
+        # proftpd
+        if pargs.proftpd:
+            if os.path.exists('/etc/init.d/proftpd'):
+                services = services + ['proftpd']
+            else:
+                Log.info(self, "ProFTPd is not installed")
+
+        # netdata
+        if pargs.netdata:
+            if os.path.exists('{0}'.format(wo_system) + 'netdata.service'):
+                services = services + ['netdata']
+            else:
+                Log.info(self, "Netdata is not installed")
 
         for service in services:
             Log.debug(self, "Stopping service: {0}".format(service))
@@ -165,46 +219,63 @@ class WOStackStatusController(CementBaseController):
     def restart(self):
         """Restart services"""
         services = []
-        if not (self.app.pargs.nginx or self.app.pargs.php or
-                self.app.pargs.php73 or
-                self.app.pargs.mysql or
-                self.app.pargs.memcached or
-                self.app.pargs.redis or
-                self.app.pargs.fail2ban):
-            self.app.pargs.nginx = True
-            self.app.pargs.php = True
-            self.app.pargs.mysql = True
+        wo_system = "/lib/systemd/system/"
+        pargs = self.app.pargs
+        if not (pargs.nginx or pargs.php or
+                pargs.php72 or pargs.php73 or
+                pargs.php74 or
+                pargs.mysql or
+                pargs.netdata or
+                pargs.proftpd or
+                pargs.redis or
+                pargs.fail2ban):
+            pargs.nginx = True
+            pargs.php = True
+            pargs.mysql = True
+            pargs.netdata = True
 
-        if self.app.pargs.nginx:
-            if (WOAptGet.is_installed(self, 'nginx-custom')):
+        if pargs.nginx:
+            if os.path.exists('{0}'.format(wo_system) + 'nginx.service'):
                 services = services + ['nginx']
             else:
                 Log.info(self, "Nginx is not installed")
 
-        if self.app.pargs.php:
-            if WOAptGet.is_installed(self, 'php7.2-fpm'):
+        if pargs.php:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
+                services = services + ['php7.2-fpm']
+            else:
+                Log.info(self, "PHP7.2-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
+                services = services + ['php7.3-fpm']
+            else:
+                Log.info(self, "PHP7.3-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
+            else:
+                Log.info(self, "PHP7.4-FPM is not installed")
+
+        if pargs.php72:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
                 services = services + ['php7.2-fpm']
             else:
                 Log.info(self, "PHP7.2-FPM is not installed")
 
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
+        if pargs.php73:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
                 services = services + ['php7.3-fpm']
             else:
                 Log.info(self, "PHP7.3-FPM is not installed")
 
-        if self.app.pargs.php73:
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
-                services = services + ['php7.3-fpm']
+        if pargs.php74:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
             else:
-                Log.info(self, "PHP7.3-FPM is not installed")
+                Log.info(self, "PHP7.4-FPM is not installed")
 
-        if self.app.pargs.mysql:
-            if ((WOVariables.wo_mysql_host is "localhost") or
-                    (WOVariables.wo_mysql_host is "127.0.0.1")):
-                if ((WOAptGet.is_installed(self, 'mysql-server') or
-                     WOAptGet.is_installed(self,
-                                           'percona-server-server-5.6') or
-                        WOAptGet.is_installed(self, 'mariadb-server'))):
+        if pargs.mysql:
+            if ((WOVar.wo_mysql_host == "localhost") or
+                    (WOVar.wo_mysql_host == "127.0.0.1")):
+                if os.path.exists('/etc/systemd/system/mysql.service'):
                     services = services + ['mysql']
                 else:
                     Log.info(self, "MySQL is not installed")
@@ -212,23 +283,32 @@ class WOStackStatusController(CementBaseController):
                 Log.warn(self, "Remote MySQL found, "
                          "Unable to check MySQL service status")
 
-        if self.app.pargs.memcached:
-            if WOAptGet.is_installed(self, 'memcached'):
-                services = services + ['memcached']
-            else:
-                Log.info(self, "Memcached is not installed")
-
-        if self.app.pargs.redis:
-            if WOAptGet.is_installed(self, 'redis-server'):
+        if pargs.redis:
+            if os.path.exists('{0}'.format(wo_system) +
+                              'redis-server.service'):
                 services = services + ['redis-server']
             else:
                 Log.info(self, "Redis server is not installed")
 
-        if self.app.pargs.fail2ban:
-            if WOAptGet.is_installed(self, 'fail2ban'):
-                services = services + ['fail2ban-client']
+        if pargs.fail2ban:
+            if os.path.exists('{0}'.format(wo_system) + 'fail2ban.service'):
+                services = services + ['fail2ban']
             else:
                 Log.info(self, "fail2ban is not installed")
+
+        # proftpd
+        if pargs.proftpd:
+            if os.path.exists('/etc/init.d/proftpd'):
+                services = services + ['proftpd']
+            else:
+                Log.info(self, "ProFTPd is not installed")
+
+        # netdata
+        if pargs.netdata:
+            if os.path.exists('{0}'.format(wo_system) + 'netdata.service'):
+                services = services + ['netdata']
+            else:
+                Log.info(self, "Netdata is not installed")
 
         for service in services:
             Log.debug(self, "Restarting service: {0}".format(service))
@@ -238,45 +318,66 @@ class WOStackStatusController(CementBaseController):
     def status(self):
         """Status of services"""
         services = []
-        if not (self.app.pargs.nginx or self.app.pargs.php or
-                self.app.pargs.php73 or
-                self.app.pargs.mysql or
-                self.app.pargs.memcached or
-                self.app.pargs.redis or
-                self.app.pargs.fail2ban):
-            self.app.pargs.nginx = True
-            self.app.pargs.php = True
-            self.app.pargs.mysql = True
+        wo_system = "/lib/systemd/system/"
+        pargs = self.app.pargs
+        if not (pargs.nginx or pargs.php or
+                pargs.php72 or
+                pargs.php73 or
+                pargs.php74 or
+                pargs.mysql or
+                pargs.netdata or
+                pargs.proftpd or
+                pargs.redis or
+                pargs.fail2ban):
+            pargs.nginx = True
+            pargs.php = True
+            pargs.mysql = True
+            pargs.fail2ban = True
+            pargs.netdata = True
+            pargs.ufw = True
 
-        if self.app.pargs.nginx:
-            if (WOAptGet.is_installed(self, 'nginx-custom')):
+        if pargs.nginx:
+            if os.path.exists('{0}'.format(wo_system) + 'nginx.service'):
                 services = services + ['nginx']
             else:
                 Log.info(self, "Nginx is not installed")
 
-        if self.app.pargs.php:
-            if WOAptGet.is_installed(self, 'php7.2-fpm'):
+        if pargs.php:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
+                services = services + ['php7.2-fpm']
+            else:
+                Log.info(self, "PHP7.2-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
+                services = services + ['php7.3-fpm']
+            else:
+                Log.info(self, "PHP7.3-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
+            else:
+                Log.info(self, "PHP7.4-FPM is not installed")
+
+        if pargs.php72:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
                 services = services + ['php7.2-fpm']
             else:
                 Log.info(self, "PHP7.2-FPM is not installed")
 
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
+        if pargs.php73:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
                 services = services + ['php7.3-fpm']
             else:
                 Log.info(self, "PHP7.3-FPM is not installed")
 
-        if self.app.pargs.php73:
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
-                services = services + ['php7.3-fpm']
+        if pargs.php74:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
             else:
-                Log.info(self, "PHP7.3-FPM is not installed")
+                Log.info(self, "PHP7.4-FPM is not installed")
 
-        if self.app.pargs.mysql:
-            if ((WOVariables.wo_mysql_host is "localhost") or
-                    (WOVariables.wo_mysql_host is "127.0.0.1")):
-                if (WOAptGet.is_installed(self, 'mysql-server') or
-                    WOAptGet.is_installed(self, 'percona-server-server-5.6') or
-                        WOAptGet.is_installed(self, 'mariadb-server')):
+        if pargs.mysql:
+            if ((WOVar.wo_mysql_host == "localhost") or
+                    (WOVar.wo_mysql_host == "127.0.0.1")):
+                if os.path.exists('/etc/systemd/system/mysql.service'):
                     services = services + ['mysql']
                 else:
                     Log.info(self, "MySQL is not installed")
@@ -284,23 +385,43 @@ class WOStackStatusController(CementBaseController):
                 Log.warn(self, "Remote MySQL found, "
                          "Unable to check MySQL service status")
 
-        if self.app.pargs.memcached:
-            if WOAptGet.is_installed(self, 'memcached'):
-                services = services + ['memcached']
-            else:
-                Log.info(self, "Memcached is not installed")
-
-        if self.app.pargs.redis:
-            if WOAptGet.is_installed(self, 'redis-server'):
+        if pargs.redis:
+            if os.path.exists('{0}'.format(wo_system) +
+                              'redis-server.service'):
                 services = services + ['redis-server']
             else:
                 Log.info(self, "Redis server is not installed")
 
-        if self.app.pargs.fail2ban:
-            if WOAptGet.is_installed(self, 'fail2ban'):
-                services = services + ['fail2ban-client']
+        if pargs.fail2ban:
+            if os.path.exists('{0}'.format(wo_system) + 'fail2ban.service'):
+                services = services + ['fail2ban']
             else:
                 Log.info(self, "fail2ban is not installed")
+
+        # proftpd
+        if pargs.proftpd:
+            if os.path.exists('/etc/init.d/proftpd'):
+                services = services + ['proftpd']
+            else:
+                Log.info(self, "ProFTPd is not installed")
+
+        # netdata
+        if pargs.netdata:
+            if os.path.exists('{0}'.format(wo_system) + 'netdata.service'):
+                services = services + ['netdata']
+            else:
+                Log.info(self, "Netdata is not installed")
+
+        # UFW
+        if pargs.ufw:
+            if os.path.exists('/usr/sbin/ufw'):
+                if WOFileUtils.grepcheck(
+                        self, '/etc/ufw/ufw.conf', 'ENABLED=yes'):
+                    Log.info(self, "UFW Firewall is enabled")
+                else:
+                    Log.info(self, "UFW Firewall is disabled")
+            else:
+                Log.info(self, "UFW is not installed")
 
         for service in services:
             if WOService.get_service_status(self, service):
@@ -310,46 +431,63 @@ class WOStackStatusController(CementBaseController):
     def reload(self):
         """Reload service"""
         services = []
-        if not (self.app.pargs.nginx or self.app.pargs.php or
-                self.app.pargs.php73 or
-                self.app.pargs.mysql or
-                self.app.pargs.memcached or
-                self.app.pargs.redis or
-                self.app.pargs.fail2ban):
-            self.app.pargs.nginx = True
-            self.app.pargs.php = True
-            self.app.pargs.mysql = True
+        wo_system = "/lib/systemd/system/"
+        pargs = self.app.pargs
+        if not (pargs.nginx or pargs.php or
+                pargs.php72 or pargs.php73 or
+                pargs.php74 or
+                pargs.mysql or
+                pargs.netdata or
+                pargs.proftpd or
+                pargs.redis or
+                pargs.fail2ban):
+            pargs.nginx = True
+            pargs.php = True
+            pargs.mysql = True
+            pargs.fail2ban = True
 
-        if self.app.pargs.nginx:
-            if (WOAptGet.is_installed(self, 'nginx-custom') or
-                    WOAptGet.is_installed(self, 'nginx-mainline')):
+        if pargs.nginx:
+            if os.path.exists('{0}'.format(wo_system) + 'nginx.service'):
                 services = services + ['nginx']
             else:
                 Log.info(self, "Nginx is not installed")
 
-        if self.app.pargs.php:
-            if WOAptGet.is_installed(self, 'php7.2-fpm'):
+        if pargs.php:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
+                services = services + ['php7.2-fpm']
+            else:
+                Log.info(self, "PHP7.2-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
+                services = services + ['php7.3-fpm']
+            else:
+                Log.info(self, "PHP7.3-FPM is not installed")
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
+            else:
+                Log.info(self, "PHP7.4-FPM is not installed")
+
+        if pargs.php72:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.2-fpm.service'):
                 services = services + ['php7.2-fpm']
             else:
                 Log.info(self, "PHP7.2-FPM is not installed")
 
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
+        if pargs.php73:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.3-fpm.service'):
                 services = services + ['php7.3-fpm']
             else:
                 Log.info(self, "PHP7.3-FPM is not installed")
 
-        if self.app.pargs.php73:
-            if WOAptGet.is_installed(self, 'php7.3-fpm'):
-                services = services + ['php7.3-fpm']
+        if pargs.php74:
+            if os.path.exists('{0}'.format(wo_system) + 'php7.4-fpm.service'):
+                services = services + ['php7.4-fpm']
             else:
-                Log.info(self, "PHP7.3-FPM is not installed")
+                Log.info(self, "PHP7.4-FPM is not installed")
 
-        if self.app.pargs.mysql:
-            if ((WOVariables.wo_mysql_host is "localhost") or
-                    (WOVariables.wo_mysql_host is "127.0.0.1")):
-                if (WOAptGet.is_installed(self, 'mysql-server') or
-                    WOAptGet.is_installed(self, 'percona-server-server-5.6') or
-                        WOAptGet.is_installed(self, 'mariadb-server')):
+        if pargs.mysql:
+            if ((WOVar.wo_mysql_host == "localhost") or
+                    (WOVar.wo_mysql_host == "127.0.0.1")):
+                if os.path.exists('/etc/systemd/system/mysql.service'):
                     services = services + ['mysql']
                 else:
                     Log.info(self, "MySQL is not installed")
@@ -357,23 +495,32 @@ class WOStackStatusController(CementBaseController):
                 Log.warn(self, "Remote MySQL found, "
                          "Unable to check MySQL service status")
 
-        if self.app.pargs.memcached:
-            if WOAptGet.is_installed(self, 'memcached'):
-                services = services + ['memcached']
-            else:
-                Log.info(self, "Memcached is not installed")
-
-        if self.app.pargs.redis:
-            if WOAptGet.is_installed(self, 'redis-server'):
+        if pargs.redis:
+            if os.path.exists('{0}'.format(wo_system) +
+                              'redis-server.service'):
                 services = services + ['redis-server']
             else:
                 Log.info(self, "Redis server is not installed")
 
-        if self.app.pargs.fail2ban:
-            if WOAptGet.is_installed(self, 'fail2ban'):
-                services = services + ['fail2ban-client']
+        if pargs.fail2ban:
+            if os.path.exists('{0}'.format(wo_system) + 'fail2ban.service'):
+                services = services + ['fail2ban']
             else:
                 Log.info(self, "fail2ban is not installed")
+
+        # proftpd
+        if pargs.proftpd:
+            if os.path.exists('/etc/init.d/proftpd'):
+                services = services + ['proftpd']
+            else:
+                Log.info(self, "ProFTPd is not installed")
+
+        # netdata
+        if pargs.netdata:
+            if os.path.exists('{0}'.format(wo_system) + 'netdata.service'):
+                services = services + ['netdata']
+            else:
+                Log.info(self, "Netdata is not installed")
 
         for service in services:
             Log.debug(self, "Reloading service: {0}".format(service))
